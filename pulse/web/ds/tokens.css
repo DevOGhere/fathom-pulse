@@ -1,0 +1,46 @@
+/* FathomPulse design tokens — dark desk, v1 (dark-only)
+ * Validated 2026-07-03 via dataviz validate_palette.js, surface #1a1a19:
+ *   waterfall categorical: worst adjacent CVD ΔE 41.3 — PASS all checks
+ *   bid/ask pair:          worst adjacent CVD ΔE 66.4 — PASS all checks
+ * Rules: color follows entity, never rank. Status colors reserved — never a series.
+ * Text wears ink tokens, never series color. */
+
+:root {
+  /* surfaces & chrome */
+  --page:           #0d0d0d;
+  --surface-1:      #1a1a19;   /* panel / chart surface */
+  --ink-primary:    #ffffff;
+  --ink-secondary:  #c3c2b7;
+  --ink-muted:      #898781;   /* axis, tick labels */
+  --gridline:       #2c2c2a;   /* hairline */
+  --baseline:       #383835;
+  --border:         rgba(255,255,255,0.10);
+
+  /* market polarity — bid/ask is a diverging pair (blue↔red poles) */
+  --bid:            #3987e5;   /* also: buy-aggressor bubbles */
+  --ask:            #e66767;   /* also: sell-aggressor bubbles */
+  --mid-neutral:    #383835;   /* diverging midpoint (OBI zero line) */
+
+  /* Anatomy of a Tick — 4 waterfall stages (categorical, fixed order,
+     deliberately excludes blue/red/orange so no stage impersonates bid/ask) */
+  --stage-recv:     #199e70;   /* recv_ts_ns → derived_at */
+  --stage-derive:   #c98500;   /* derived_at → pulse_consume */
+  --stage-pulse:    #9085e9;   /* pulse_consume → ws_send */
+  --stage-ws:       #d55181;   /* ws_send → (client, local segment) */
+
+  /* sequential intensity (log-scaled heat: quote rate, book pressure)
+     blue ramp, ordinal floor on dark = step 600 (#184f95) */
+  --seq-250: #86b6ef; --seq-350: #5598e7; --seq-450: #2a78d6;
+  --seq-550: #1c5cab; --seq-600: #184f95;
+
+  /* status — reserved (engine health, data-age chips); always icon+label, never color alone
+     data-age mapping: fresh=good · aging=warning · stale=serious · lying=critical */
+  --status-good:     #0ca30c;
+  --status-warning:  #fab219;
+  --status-serious:  #ec835a;
+  --status-critical: #d03b3b;
+
+  /* type */
+  --font-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* tabular-nums ONLY on aligned columns: prices, latency ms, axis ticks */
+}
