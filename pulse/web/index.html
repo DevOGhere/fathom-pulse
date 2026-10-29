@@ -1,14 +1,99 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><title>FathomPulse — frame counter (Day 2)</title>
-<style>body{background:#0d0d0d;color:#ddd;font:14px system-ui;padding:24px}b{color:#fff}pre{background:#1a1a19;padding:12px;border-radius:8px}</style>
-<h2>FathomPulse · bare counter page</h2>
-<p>frame <b id="seq">—</b> · measured <b id="hz">—</b> Hz · pulse age <b id="age">—</b> ms · processor lag <b id="lag">—</b> msgs · this client dropped <b id="drops">0</b></p>
-<pre id="out">connecting…</pre>
-<script>
-const $=id=>document.getElementById(id); let n=0,t0=performance.now();
-const ws=new WebSocket(`ws://${location.host}/stream${location.search}`);
-ws.onmessage=e=>{const f=JSON.parse(e.data); n++;
- $('seq').textContent=f.seq; $('age').textContent=f.pulse_age_ms; $('lag').textContent=f.lag.total; $('drops').textContent=f.client.drops;
- const dt=(performance.now()-t0)/1000; if(dt>1){$('hz').textContent=(n/dt).toFixed(1); }
- $('out').textContent=JSON.stringify(Object.fromEntries(Object.entries(f.series).map(([k,v])=>[k,v.window_1s])),null,1);};
-ws.onclose=()=>$('out').textContent='disconnected — numbers above are frozen, not current';
-</script></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FathomPulse</title>
+<link rel="stylesheet" href="/static/ds/tokens.css">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="ocean" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i></div>
+
+<div class="top">
+  <span class="brand">FathomPulse</span>
+  <span class="spacer"></span>
+  <span class="badge" id="connBadge"><span class="dot"></span><span id="connText">Connecting…</span></span>
+  <span class="badge" id="ageBadge"><span class="dot"></span><span class="num" id="ageText">no data yet</span></span>
+  <span class="badge" id="calBadge"><span class="dot"></span><span>Not calibrated · built Day 4</span></span>
+</div>
+<div class="strip" id="strip" role="group" aria-label="Venues"></div>
+
+<div class="grid">
+  <section class="lens"><div class="lens-title e">Engine room</div>
+    <div class="col pool engine">
+      <div class="card" id="anat">
+        <h3>Anatomy of a Tick <span class="sub">last 1 s · ms</span><button class="chip" data-chip></button></h3>
+        <div class="ph" id="anatBody"><span class="empty">Waiting for data…</span></div>
+        <div class="ph" style="margin-top:8px;color:var(--ink-muted)">The full per-second waterfall, P50/P99 toggle and click-to-pin arrive on Day 4. Stage 3 (<b>Pulse → sent</b>) and the browser segment are not measured yet, so they are not shown.</div>
+      </div>
+      <div class="card">
+        <h3>Pipeline vitals</h3>
+        <div class="tiles">
+          <div class="tile"><div class="l">Processor lag</div><div class="v num" id="tLag">—</div><div class="s">msgs behind (fathom-processor)</div></div>
+          <div class="tile"><div class="l">Derived rate</div><div class="v num" id="tRate">—</div><div class="s">updates in last 1 s</div></div>
+          <div class="tile"><div class="l">Frames dropped</div><div class="v num" id="tDrop">0</div><div class="s">this client; smoothness lost, not state</div></div>
+          <div class="tile"><div class="l">Pulse age</div><div class="v num" id="tAge">—</div><div class="s">ms since newest consume</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Calibration <span class="sub">does Pulse find a delay we hide on purpose?</span></h3>
+        <div class="ph"><b>Not built yet (Day 4).</b> Until it passes, treat every latency figure here as unverified.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="lens"><div class="lens-title m">Market lens</div>
+    <div class="col pool market">
+      <div class="card">
+        <h3>Mid &amp; microprice <span class="sub">trailing 60 s · 10 Hz</span><button class="chip" data-chip></button></h3>
+        <div class="hero"><span class="v" id="heroMid">—</span><span class="l" id="heroSub"></span></div>
+        <canvas id="cMid" data-h="120"></canvas>
+        <div class="legend">
+          <span><i style="background:var(--ink-secondary)"></i>mid</span>
+          <span><i style="background:var(--bid)"></i>microprice above mid (buyers leaning)</span>
+          <span><i style="background:var(--ask)"></i>microprice below mid</span>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Order imbalance <span class="sub">top of book · −1 … +1</span><button class="chip" data-chip></button></h3>
+        <canvas id="cObi" data-h="64"></canvas>
+        <div class="legend"><span><i style="background:var(--bid)"></i>more resting bids</span><span><i style="background:var(--ask)"></i>more resting asks</span><span id="spreadNote" style="margin-left:auto"></span></div>
+      </div>
+      <div class="card">
+        <h3>Top of book &amp; tape <span class="sub">best bid/ask only; full depth is out of scope</span></h3>
+        <div class="tob" id="tob"></div>
+        <div class="th" style="margin-top:10px">Trades · time · price · size (dot = aggressor side)</div>
+        <div class="tape" id="tape"></div>
+        <div class="empty" id="tapeNote" style="padding-top:6px"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="lens"><div class="lens-title o">Operations</div>
+    <div class="col pool neutral ops">
+      <div class="card">
+        <h3>Feed health <span class="sub">per venue</span></h3>
+        <table class="feeds" id="feeds"></table>
+        <div class="empty" style="padding-top:6px">Sequence gaps: n/a. Pulse reads the derived stream and cannot see exchange sequence numbers.</div>
+      </div>
+      <div class="card">
+        <h3>Event log <span class="sub">this session · newest first</span></h3>
+        <div class="log" id="log"></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="pool neutral timeline">
+    <h3>Shared timeline <span class="sub">market activity and pipeline strain on one clock · trailing 60 s</span><button class="chip" data-chip></button></h3>
+    <div class="sheet market"><div class="sl">Market activity · derived updates per second</div><canvas id="cQuote" data-h="70"></canvas></div>
+    <div class="sheet engine"><div class="sl">Pipeline strain · processor lag (msgs)</div><canvas id="cLag" data-h="90"></canvas></div>
+    <div class="tl-note">Incident detection and shaded bands arrive on Day 6.</div>
+  </div>
+</div>
+
+<div id="tip"></div>
+<div class="statusbar"><span class="num" id="sbClock"></span><span id="sbConn"></span><span class="num" id="sbSeq"></span><span class="num" id="sbMeter"></span><span class="sp"></span><span>LIVE · host-side Pulse · Fathom read-only</span></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

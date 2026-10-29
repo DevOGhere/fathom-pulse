@@ -28,6 +28,7 @@ BIN_GRACE_NS = 250_000_000
 BIN_RING_CAP = 300       # 5 minutes of closed 1s bins per key
 RAW_RING_CAP = 20_000    # recent derived records per key (~47/s total, so well over 5 min)
 VOL_WINDOW = 60
+TRADE_TAIL_CAP = 50      # recent trades kept per key for the time-and-sales tail
 
 
 class DerivedRec(NamedTuple):
@@ -45,6 +46,8 @@ class DerivedRec(NamedTuple):
     effective_spread: Optional[float]   # None = sentinel / no recent trade
     best_bid: float
     best_ask: float
+    best_bid_qty: float = 0.0
+    best_ask_qty: float = 0.0
 
 
 class TradeRec(NamedTuple):
@@ -55,6 +58,7 @@ class TradeRec(NamedTuple):
     consume_mono_ns: int
     consume_wall_ns: int
     kafka_ts_ms: int
+    is_buyer_maker: bool = False   # True => the BUYER was the maker => the AGGRESSOR was the seller (same on both venues)
 
 
 @dataclass
@@ -96,7 +100,7 @@ class _Accum:
 
 
 class _Key:
-    __slots__ = ("next_sec", "open", "bins", "raw", "win")
+    __slots__ = ("next_sec", "open", "bins", "raw", "win", "trades")
 
     def __init__(self, bin_cap: int, raw_cap: int) -> None:
         self.next_sec: Optional[int] = None
@@ -105,6 +109,7 @@ class _Key:
         self.raw: deque[DerivedRec] = deque(maxlen=raw_cap)
         # trailing window of (close_mid_or_None, trade_count, trade_qty) per closed bin
         self.win: deque[tuple] = deque(maxlen=VOL_WINDOW)
+        self.trades: deque[TradeRec] = deque(maxlen=TRADE_TAIL_CAP)
 
 
 class Aggregator:
@@ -148,6 +153,7 @@ class Aggregator:
             return False
         a.n_trades += 1
         a.trade_qty += r.quantity
+        k.trades.append(r)
         return True
 
     def close_due(self, now_ns: int) -> list[Bin]:
@@ -207,6 +213,10 @@ class Aggregator:
             out.append(r)
         out.reverse()
         return out
+
+    def recent_trades(self, venue: str, symbol: str, n: int) -> list[TradeRec]:
+        k = self._keys.get((venue, symbol))
+        return list(k.trades)[-n:] if k else []
 
     def recent_bins(self, venue: str, symbol: str, n: int) -> list[Bin]:
         k = self._keys.get((venue, symbol))

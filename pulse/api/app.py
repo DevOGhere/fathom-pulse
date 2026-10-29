@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from pulse.api.hub import Hub
 
@@ -25,9 +26,30 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="FathomPulse", lifespan=lifespan)
 
 
+app.mount("/static", StaticFiles(directory=WEB), name="static")      # tokens.css lives at /static/ds/tokens.css
+_debug_stats: dict = {}
+
+
 @app.get("/")
 async def index():
     return FileResponse(WEB / "index.html")
+
+
+@app.get("/counter")
+async def counter():
+    return FileResponse(WEB / "counter.html")
+
+
+@app.post("/debug/stats")
+async def post_stats(stats: dict):
+    """Browser-side render meter posts here so the 60fps gate can be proven on stdout (debug only)."""
+    _debug_stats.update(stats)
+    return {"ok": True}
+
+
+@app.get("/debug/stats")
+async def get_stats():
+    return _debug_stats
 
 
 @app.get("/health")

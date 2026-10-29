@@ -16,6 +16,7 @@ from pulse.ingest.rings import NS, Aggregator
 
 SCHEMA_VERSION = 1
 HIST_BINS = 60
+TRADES_IN_FRAME = 12
 
 
 def _pct(vals: list[float], p: float) -> Optional[float]:
@@ -36,7 +37,7 @@ def build_frame(agg: Aggregator, seq: int, now_wall_ns: int, mono_to_wall, lag: 
     for venue, symbol in sorted(agg.keys()):
         win = agg.window(venue, symbol, now_wall_ns - NS)
         bins = agg.recent_bins(venue, symbol, HIST_BINS)
-        entry: dict = {"window_1s": None, "bins": None}
+        entry: dict = {"window_1s": None, "bins": None, "trades": []}
         if win:
             last = win[-1]
             newest_consume = last.consume_wall_ns if newest_consume is None else max(newest_consume, last.consume_wall_ns)
@@ -47,6 +48,8 @@ def build_frame(agg: Aggregator, seq: int, now_wall_ns: int, mono_to_wall, lag: 
                 "mid": last.mid, "microprice": last.microprice,
                 "obi_top1": last.obi_top1, "obi_top5": last.obi_top5,
                 "spread_abs": last.best_ask - last.best_bid,
+                "best_bid": last.best_bid, "best_ask": last.best_ask,
+                "best_bid_qty": last.best_bid_qty, "best_ask_qty": last.best_ask_qty,
                 "effective_spread": next((r.effective_spread for r in reversed(win) if r.effective_spread is not None), None),
                 "derived_age_ms": round((now_wall_ns - mono_to_wall(last.derived_at_ns)) / 1e6, 2),
                 "pulse_consume_age_ms": round((now_wall_ns - last.consume_wall_ns) / 1e6, 2),
@@ -55,6 +58,9 @@ def build_frame(agg: Aggregator, seq: int, now_wall_ns: int, mono_to_wall, lag: 
                 "stage_derived_to_consume_ms": _stage(s2),
                 "neg_stage": sum(1 for v in s1 if v < 0) + sum(1 for v in s2 if v < 0),
             }
+        # aggressor = seller when is_buyer_maker (verified against producer/venues.py on both venues)
+        entry["trades"] = [{"t_ms": t.consume_wall_ns // 1_000_000, "px": t.price, "qty": t.quantity,
+                            "aggressor": "sell" if t.is_buyer_maker else "buy"} for t in agg.recent_trades(venue, symbol, TRADES_IN_FRAME)]
         if bins:
             entry["bins"] = {
                 "start_s": [b.start_s for b in bins],

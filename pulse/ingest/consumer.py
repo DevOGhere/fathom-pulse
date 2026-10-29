@@ -139,11 +139,11 @@ class IngestConsumer:
                     self.sample_derived = d
                 eff = d.effective_spread if d.effective_spread != 0.0 else None   # sentinel -> None
                 return DerivedRec(d.venue, d.symbol, d.derived_at_ns, d.recv_ts_ns, mono, wall, kafka_ts_ms,
-                                  d.mid_price, d.microprice, d.obi_top1, d.obi_top5, eff, d.best_bid, d.best_ask)
+                                  d.mid_price, d.microprice, d.obi_top1, d.obi_top5, eff, d.best_bid, d.best_ask, d.best_bid_qty, d.best_ask_qty)
             if idx != _IDX_TRADE:        # book snapshots/deltas: skipped before parsing
                 return None
             t = wire.decode(value)
-            return TradeRec(t.venue, t.symbol, t.price, t.quantity, mono, wall, kafka_ts_ms)
+            return TradeRec(t.venue, t.symbol, t.price, t.quantity, mono, wall, kafka_ts_ms, t.is_buyer_maker)
         except wire.WireError:
             self.errors["wire"] += 1
             return None

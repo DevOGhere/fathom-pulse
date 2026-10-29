@@ -76,3 +76,22 @@ def test_ages_use_the_right_clocks():
 def test_empty_state_has_honest_nulls():
     f = frame(Aggregator(), 10.0)
     assert f["series"] == {} and f["pulse_age_ms"] is None
+
+
+def test_trade_tail_and_aggressor_side():
+    from pulse.ingest.rings import TradeRec
+    a = Aggregator()
+    a.add_derived(rec(10.0))
+    # is_buyer_maker=True => buyer was the maker => aggressor is the SELLER (same mapping on Binance and Coinbase upstream)
+    a.add_trade(TradeRec(V, S, 100.0, 0.5, 0, int(10.1 * NS), 0, True))
+    a.add_trade(TradeRec(V, S, 101.0, 0.2, 0, int(10.2 * NS), 0, False))
+    t = frame(a, 10.5)["series"][f"{V}/{S}"]["trades"]
+    assert [x["aggressor"] for x in t] == ["sell", "buy"] and t[0]["px"] == 100.0 and t[1]["qty"] == 0.2
+
+
+def test_top_of_book_quantities_ride_the_frame():
+    a = Aggregator()
+    r = rec(10.0)._replace(best_bid_qty=1.5, best_ask_qty=2.5)
+    a.add_derived(r)
+    w = frame(a, 10.2)["series"][f"{V}/{S}"]["window_1s"]
+    assert (w["best_bid"], w["best_ask"], w["best_bid_qty"], w["best_ask_qty"]) == (99.5, 100.5, 1.5, 2.5)
