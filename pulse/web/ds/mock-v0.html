@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FathomPulse — UI mock v0 (synthetic data)</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--page); color: var(--ink-primary); font-family: var(--font-ui); font-size: 13px; }
+  .num { font-variant-numeric: tabular-nums; }
+  .mockbar { background: #2a2410; color: #f3d98a; padding: 6px 16px; font-size: 12px; border-bottom: 1px solid #4a3f17; }
+  .top { display: flex; align-items: center; gap: 16px; padding: 10px 16px; border-bottom: 1px solid var(--gridline); }
+  .brand { font-weight: 600; letter-spacing: .02em; }
+  .tabs { display: flex; gap: 4px; }
+  .tab { background: none; border: 1px solid var(--border); color: var(--ink-secondary); padding: 4px 10px; border-radius: 6px; cursor: pointer; font: inherit; }
+  .tab[aria-pressed=true] { background: var(--surface-1); color: var(--ink-primary); border-color: var(--baseline); }
+  .spacer { flex: 1; }
+  .badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); font-size: 12px; color: var(--ink-secondary); }
+  .badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-muted); }
+  .badge.good .dot { background: var(--status-good); } .badge.warning .dot { background: var(--status-warning); }
+  .badge.serious .dot { background: var(--status-serious); } .badge.critical .dot { background: var(--status-critical); }
+  .grid { display: grid; grid-template-columns: 1.1fr 1fr; gap: 12px; padding: 12px 16px; }
+  .lens-title { grid-column: span 1; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-muted); margin: 2px 0 -4px; }
+  .col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; position: relative; }
+  .card h3 { margin: 0 0 8px; font-size: 12px; font-weight: 600; color: var(--ink-secondary); display: flex; align-items: center; gap: 8px; }
+  .card h3 .sub { font-weight: 400; color: var(--ink-muted); }
+  .chip { margin-left: auto; font-weight: 400; font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--ink-secondary); cursor: pointer; background: none; font-family: inherit; display: inline-flex; gap: 5px; align-items: center; }
+  .chip.good { border-color: #0ca30c66; } .chip.warning { border-color: #fab21988; } .chip.serious { border-color: #ec835a99; } .chip.critical { border-color: #d03b3bcc; }
+  .hero { display: flex; align-items: baseline; gap: 14px; margin-bottom: 4px; }
+  .hero .v { font-size: 34px; font-weight: 600; line-height: 1; }
+  .hero .l { color: var(--ink-muted); font-size: 12px; }
+  canvas { display: block; width: 100%; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .tile .l { color: var(--ink-muted); font-size: 11px; margin-bottom: 4px; }
+  .tile .v { font-size: 22px; font-weight: 600; }
+  .tile .s { color: var(--ink-muted); font-size: 11px; margin-top: 2px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; color: var(--ink-secondary); font-size: 11px; margin-top: 6px; }
+  .legend i { display: inline-block; width: 12px; height: 8px; border-radius: 2px; margin-right: 5px; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-left: auto; }
+  .seg button { background: none; border: 0; color: var(--ink-secondary); padding: 2px 9px; font: inherit; font-size: 11px; cursor: pointer; }
+  .seg button[aria-pressed=true] { background: var(--baseline); color: var(--ink-primary); }
+  .btn { background: var(--baseline); color: var(--ink-primary); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+  .btn:hover { background: #45453f; }
+  .pin { margin-top: 8px; border-top: 1px solid var(--gridline); padding-top: 8px; color: var(--ink-secondary); font-size: 12px; min-height: 34px; }
+  .cal { display: flex; flex-direction: column; gap: 6px; }
+  .cal .head { font-size: 15px; font-weight: 600; }
+  .cal .body { color: var(--ink-secondary); line-height: 1.45; }
+  .timeline { grid-column: 1 / -1; }
+  .tl-note { color: var(--ink-muted); font-size: 11px; margin-top: 4px; }
+  #tip { position: fixed; pointer-events: none; background: #232321; border: 1px solid var(--baseline); border-radius: 8px; padding: 8px 10px; font-size: 12px; display: none; z-index: 10; min-width: 150px; }
+  #tip .row { display: flex; justify-content: space-between; gap: 14px; align-items: center; }
+  #tip .row b { font-weight: 600; } #tip .row span { color: var(--ink-secondary); }
+  #tip .k { display: inline-block; width: 10px; height: 2px; margin-right: 6px; vertical-align: middle; }
+  .foot { padding: 6px 16px 18px; color: var(--ink-muted); font-size: 11px; display: flex; gap: 18px; flex-wrap: wrap; }
+  .kbd { border: 1px solid var(--baseline); border-radius: 4px; padding: 0 5px; color: var(--ink-secondary); }
+  .incident { color: var(--status-serious); }
+  @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } .tiles { grid-template-columns: repeat(2, 1fr); } }
+</style>
+<style id="liquid">
+  /* ===== restrained glass: chrome floats, data sits on near-opaque ground ===== */
+  html, body { background: #080a0c; }
+  .mockbar, .top, .grid, .foot { position: relative; z-index: 1; }
+  .ocean { position: fixed; inset: 0; overflow: hidden; z-index: 0; background: radial-gradient(130% 100% at 50% -10%, #11171a 0%, #0a0c0f 55%, #07080a 100%); }
+  .ocean i { position: absolute; border-radius: 50%; filter: blur(110px); opacity: .20; animation: drift 90s ease-in-out infinite alternate; }
+  .ocean .b1 { width: 44vw; height: 44vw; left: -10vw; top: 0;   background: radial-gradient(circle, #2a8f78 0%, transparent 70%); }
+  .ocean .b2 { width: 48vw; height: 48vw; right: -14vw; top: 20vh; background: radial-gradient(circle, #4a62b8 0%, transparent 70%); animation-delay: -30s; }
+  .ocean .b3 { display: none; }
+  @keyframes drift { to { transform: translate3d(3vw, -2vh, 0) scale(1.06); } }
+
+  .mockbar { background: rgba(60,48,12,.5); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(243,217,138,.2); }
+  /* glass is for the control layer: bar, controls, badges, tooltip */
+  .top { background: rgba(22,26,30,.55); backdrop-filter: blur(22px) saturate(1.4); border-bottom: 1px solid rgba(255,255,255,.08);
+         box-shadow: inset 0 1px 0 rgba(255,255,255,.08); }
+  .grid { gap: 14px; padding: 14px 16px; }
+  .lens-title { color: rgba(255,255,255,.5); padding-left: 4px; display: flex; align-items: center; gap: 8px; }
+  .lens-title::before { content: ""; width: 3px; height: 12px; border-radius: 2px; background: var(--rail, #888); }
+  .lens-title:nth-of-type(1) { --rail: #2faa8a; } .lens-title:nth-of-type(2) { --rail: #6277d6; }
+
+  /* two lenses = two bodies with a faint tint and a crisp edge. no flooding colour */
+  .pool { --tint: 255,255,255; position: relative; border-radius: 18px; padding: 10px; gap: 10px;
+    background: linear-gradient(180deg, rgba(var(--tint),.075), rgba(var(--tint),.02));
+    box-shadow: inset 0 0 0 1px rgba(var(--tint),.16), inset 0 1px 0 rgba(255,255,255,.14), 0 18px 40px -26px rgba(0,0,0,.8); }
+  .pool.engine { --tint: 47,170,138; } .pool.market { --tint: 98,119,214; } .pool.neutral { --tint: 255,255,255; }
+  .pool::before, .pool::after { content: none; }
+
+  /* data surfaces: near-opaque so charts, gridlines and text stay legible */
+  .pool .card { background: rgba(15,18,21,.88); border: 0; border-radius: 12px;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.07), inset 0 1px 0 rgba(255,255,255,.07); }
+  .card h3, .timeline h3 { text-shadow: none; }
+  .timeline h3 { margin: 2px 6px 10px; font-size: 12px; font-weight: 600; color: var(--ink-secondary); display: flex; align-items: center; gap: 8px; }
+  .timeline h3 .sub { font-weight: 400; color: var(--ink-muted); }
+  .timeline { grid-column: 1 / -1; display: block; }
+
+  .sheet { position: relative; border-radius: 12px; padding: 8px 12px 6px 14px; margin-bottom: 6px; background: rgba(15,18,21,.88);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.07); }
+  .sheet::before { content: ""; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 2px; }
+  .sheet.market::before { background: #6277d6; } .sheet.engine::before { background: #2faa8a; }
+  .sheet .sl { font-size: 11px; color: var(--ink-muted); margin: 0 0 2px 2px; }
+  .tl-note { margin: 8px 8px 2px; }
+
+  .chip, .badge, .tab, .btn, .seg { background: rgba(255,255,255,.06); box-shadow: inset 0 1px 0 rgba(255,255,255,.14); border-color: rgba(255,255,255,.12); backdrop-filter: blur(12px); }
+  .tab[aria-pressed=true], .seg button[aria-pressed=true] { background: rgba(255,255,255,.16); color: #fff; border-color: rgba(255,255,255,.24); }
+  .btn:hover { background: rgba(255,255,255,.14); }
+  .tile { padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,.04); box-shadow: inset 0 0 0 1px rgba(255,255,255,.05); }
+  .pin { border-top-color: rgba(255,255,255,.1); }
+  #tip { background: rgba(20,24,28,.78); backdrop-filter: blur(18px) saturate(1.4); border-color: rgba(255,255,255,.14); box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 14px 30px -12px rgba(0,0,0,.7); }
+  :focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+  @supports not (backdrop-filter: blur(1px)) { .top, #tip { background: #14181c; } }
+  @media (prefers-reduced-transparency: reduce) { .top, .mockbar, #tip, .chip, .badge, .tab, .btn, .seg { backdrop-filter: none; background: #171b20; } .ocean i { display: none; } }
+  @media (prefers-reduced-motion: reduce) { .ocean i { animation: none; } }
+</style>
+<style id="extras">
+  body { padding-bottom: 38px; }
+  .strip { display: flex; gap: 8px; padding: 10px 16px 0; overflow-x: auto; position: relative; z-index: 1; }
+  .pill { display: flex; align-items: center; gap: 12px; padding: 6px 12px; border-radius: 12px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); color: var(--ink-secondary); cursor: pointer; border: 0; font: inherit; white-space: nowrap; }
+  .pill[aria-pressed=true] { background: rgba(255,255,255,.12); box-shadow: inset 0 0 0 1px rgba(255,255,255,.22), inset 0 1px 0 rgba(255,255,255,.16); color: var(--ink-primary); }
+  .pill b { color: var(--ink-primary); font-weight: 600; } .pill .chg { font-size: 11px; color: var(--ink-secondary); }
+  .pill svg { display: block; color: var(--ink-secondary); }
+  .booktape { display: grid; grid-template-columns: 1.1fr 1fr; gap: 12px; }
+  .ladder, .tape { font-size: 12px; font-variant-numeric: tabular-nums; }
+  .lr { position: relative; display: flex; justify-content: space-between; padding: 2px 8px; color: var(--ink-secondary); overflow: hidden; border-radius: 3px; }
+  .lr i { position: absolute; right: 0; top: 1px; bottom: 1px; border-radius: 3px; }
+  .lr.ask i { background: rgba(230,103,103,.30); } .lr.bid i { background: rgba(57,135,229,.30); }
+  .lr span { position: relative; } .lr.mid { color: var(--ink-primary); font-weight: 600; border-top: 1px solid var(--gridline); border-bottom: 1px solid var(--gridline); padding: 4px 8px; margin: 2px 0; }
+  .tr { display: grid; grid-template-columns: 62px 1fr 52px; gap: 6px; padding: 2px 4px; color: var(--ink-secondary); }
+  .tr .d { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; } .tr .px { color: var(--ink-primary); } .tr .q { text-align: right; }
+  .th { color: var(--ink-muted); font-size: 11px; margin-bottom: 4px; }
+  table.feeds { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .feeds th { text-align: left; font-weight: 400; color: var(--ink-muted); font-size: 11px; padding: 0 6px 6px 0; }
+  .feeds td { padding: 5px 6px 5px 0; border-top: 1px solid var(--gridline); color: var(--ink-secondary); font-variant-numeric: tabular-nums; }
+  .feeds td:first-child { color: var(--ink-primary); }
+  .sdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; background: var(--status-good); }
+  .sdot.warning { background: var(--status-warning); } .sdot.critical { background: var(--status-critical); }
+  .log { font-size: 12px; max-height: 170px; overflow: auto; }
+  .le { display: grid; grid-template-columns: 58px 16px 1fr; gap: 6px; padding: 3px 0; border-top: 1px solid var(--gridline); color: var(--ink-secondary); font-variant-numeric: tabular-nums; }
+  .le:first-child { border-top: 0; } .le .ic { text-align: center; }
+  .statusbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; display: flex; gap: 20px; align-items: center; padding: 8px 16px; font-size: 11px; color: var(--ink-secondary);
+    background: rgba(18,22,26,.62); backdrop-filter: blur(20px) saturate(1.4); border-top: 1px solid rgba(255,255,255,.08); box-shadow: inset 0 1px 0 rgba(255,255,255,.06); }
+  .statusbar .sp { flex: 1; }
+  .lens-title:nth-of-type(3) { --rail: #9a9a92; }
+  @media (min-width: 1280px) { .grid { grid-template-columns: 1.15fr 1fr .8fr; } }
+  .ops .log { max-height: 460px; }
+</style>
+<style id="lenses">
+  .lens { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .lens > .col { flex: 1; }
+  .lens-title.e { --rail: #2faa8a; } .lens-title.m { --rail: #6277d6; } .lens-title.o { --rail: #9a9a92; }
+</style>
+</head>
+<body>
+<div class="ocean" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i></div>
+<div class="mockbar">MOCK — synthetic generator, not connected to Fathom. Layout, interactions and copy are being designed here; every number on this page is made up.</div>
+
+<div class="top">
+  <span class="brand">FathomPulse</span>
+  <div class="tabs" id="tabs" role="group" aria-label="Symbol"></div>
+  <span class="spacer"></span>
+  <span class="badge" id="modeBadge"><span class="dot"></span><span>Simulated · 1 s of mock = 1 s</span></span>
+  <span class="badge" id="ageBadge"><span class="dot"></span><span class="num" id="ageText">—</span></span>
+  <span class="badge" id="calBadge"><span class="dot"></span><span id="calText">Calibrating…</span></span>
+</div>
+
+<div class="strip" id="strip" role="group" aria-label="Watchlist"></div>
+<div class="grid">
+  
+  <section class="lens"><div class="lens-title e">Engine room</div>
+<div class="col pool engine">
+    <div class="card">
+      <h3>Anatomy of a Tick <span class="sub">per 1 s bin · ms</span>
+        <div class="seg" id="pctSeg"><button data-p="50" aria-pressed="false">P50</button><button data-p="99" aria-pressed="true">P99</button></div>
+        <button class="chip" data-chip="engine"></button></h3>
+      <canvas id="cAnat" height="200"></canvas>
+      <div class="legend">
+        <span><i style="background:var(--stage-recv)"></i>1 · exchange feed → derived</span>
+        <span><i style="background:var(--stage-derive)"></i>2 · derived → Pulse consumed</span>
+        <span><i style="background:var(--stage-pulse)"></i>3 · Pulse → sent</span>
+        <span><i style="background:var(--stage-ws)"></i>4 · sent → your screen (local estimate)</span>
+      </div>
+      <div class="pin" id="pin">Click a bar to pin one second and read it stage by stage.</div>
+    </div>
+
+    <div class="card">
+      <h3>Pipeline vitals</h3>
+      <div class="tiles">
+        <div class="tile"><div class="l">Consumer lag</div><div class="v num" id="tLag">—</div><div class="s">messages behind</div></div>
+        <div class="tile"><div class="l">Derived rate</div><div class="v num" id="tRate">—</div><div class="s">msg/s</div></div>
+        <div class="tile"><div class="l">Frames dropped</div><div class="v num" id="tDrop">0</div><div class="s">this client, lost smoothness not state</div></div>
+        <div class="tile"><div class="l">Latency SLO</div><div class="v num" id="tSlo">—</div><div class="s">p99 &lt; 100 ms, last 60 s</div></div>
+      </div>
+    </div>
+
+    <div class="card cal">
+      <h3>Calibration <span class="sub">does Pulse find a delay we hide on purpose?</span></h3>
+      <div class="head" id="calHead">Waiting for the first self-test…</div>
+      <div class="body" id="calBody">Pulse injects a known delay into one of its own stages, then checks whether the waterfall points at the right stage with the right size.</div>
+      <div><button class="btn" id="btnTest">Run self-test now</button> <span class="num" style="color:var(--ink-muted);margin-left:8px" id="calAgo"></span></div>
+    </div>
+  
+    <div class="card">
+      <h3>Latency distribution <span class="sub">feed → sent · last 30 s · log scale</span>
+        <button class="chip" data-chip="engine"></button></h3>
+      <canvas id="cHist" height="110"></canvas>
+      <div class="legend"><span style="color:var(--ink-muted)">Self-test seconds are left out so deliberate delays don't fatten the tail.</span></div>
+    </div>
+
+  </div>
+
+  </section>
+<section class="lens"><div class="lens-title m">Market lens</div>
+<div class="col pool market">
+    <div class="card">
+      <h3>Mid &amp; microprice <span class="sub">trailing 60 s · 10 Hz</span>
+        <button class="chip" data-chip="market" title="Age of the newest tick on this panel. Click to see where the time went."></button></h3>
+      <div class="hero"><span class="v" id="heroMid">—</span><span class="l" id="heroSub">mid · USD</span></div>
+      <canvas id="cMid" height="120"></canvas>
+      <div class="legend">
+        <span><i style="background:var(--ink-secondary)"></i>mid</span>
+        <span><i style="background:var(--bid)"></i>microprice above mid (buyers leaning)</span>
+        <span><i style="background:var(--ask)"></i>microprice below mid</span>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Order imbalance <span class="sub">top of book · &minus;1 … +1</span>
+        <button class="chip" data-chip="market"></button></h3>
+      <canvas id="cObi" height="64"></canvas>
+      <div class="legend">
+        <span><i style="background:var(--bid)"></i>more resting bids</span>
+        <span><i style="background:var(--ask)"></i>more resting asks</span>
+        <span id="spreadNote" style="margin-left:auto"></span>
+      </div>
+    </div>
+  
+    <div class="card">
+      <h3>Book &amp; tape <span class="sub">mock · needs the raw book and trades topics</span></h3>
+      <div class="booktape"><div class="ladder" id="ladder"></div><div class="tape" id="tape"></div></div>
+    </div>
+  </div>
+
+  </section>
+<section class="lens"><div class="lens-title o">Operations</div>
+<div class="col pool neutral ops">
+    <div class="card">
+      <h3>Feed health <span class="sub">per venue · mock</span></h3>
+      <table class="feeds" id="feeds"></table>
+    </div>
+    <div class="card">
+      <h3>Event log <span class="sub">newest first</span></h3>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+
+  </section>
+<div class="pool neutral timeline">
+    <h3>Shared timeline <span class="sub">market activity and pipeline strain on one clock · trailing 60 s</span>
+      <button class="chip" data-chip="engine"></button></h3>
+    <div class="sheet market"><div class="sl">Market activity · quotes per second</div><canvas id="cQuote" height="70"></canvas></div>
+    <div class="sheet engine"><div class="sl">Pipeline strain · consumer lag</div><canvas id="cLag" height="90"></canvas></div>
+    <div class="tl-note" id="tlNote">No incidents in this window.</div>
+  </div>
+</div>
+
+<div id="tip"></div>
+<div class="statusbar"><span class="num" id="sbClock"></span><span id="sbFeeds"></span><span class="num" id="sbSeq"></span><span class="sp"></span><span>SIMULATED · not connected to Fathom</span></div>
+<div class="foot">
+  <span>Labels you can trust: "feed → derived" is measured on one host clock; "your screen" is a local estimate with an error bar, never added into the absolute total.</span>
+  <span><span class="kbd">Space</span> pause · <span class="kbd">P</span> P50/P99 · <span class="kbd">T</span> self-test</span>
+</div>
+
+<script>
+'use strict';
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const C = {  /* overridden below for glass */ surface: css('--surface-1'), grid: css('--gridline'), base: css('--baseline'), muted: css('--ink-muted'), sec: css('--ink-secondary'),
+  bid: css('--bid'), ask: css('--ask'), seq: css('--seq-350'), seqFill: css('--seq-550'),
+  stages: [css('--stage-recv'), css('--stage-derive'), css('--stage-pulse'), css('--stage-ws')] };
+C.surface = 'rgba(10,14,18,0.88)'; C.grid = 'rgba(255,255,255,0.10)'; C.base = 'rgba(255,255,255,0.24)'; C.muted = '#a7a69e';
+const STAGE_NAMES = ['exchange feed → derived', 'derived → Pulse consumed', 'Pulse → sent', 'sent → your screen'];
+const N = 600, BINS = 60;
+const SYMS = [{ id: 'BTC-USD', px: 67420, tick: 0.5 }, { id: 'ETH-USD', px: 3180, tick: 0.05 }];
+let sym = 0, paused = false, pct = 99;
+const CAL_TTL = 120, CAL_RETEST = 150; // seconds; mock values
+
+// ---------- synthetic generator (mock only) ----------
+const S = { t: 0, mid: [], micro: [], obi: [], rate: [], lag: [], bins: [], px: SYMS[0].px, o: 0, burst: 0, lagv: 0, drops: 0,
+  inject: 0, test: null, lastTest: null, incidents: [], sloHist: [] };
+const randn = () => { let u = 0, v = 0; while (!u) u = Math.random(); v = Math.random(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+const pctile = (a, p) => { const b = [...a].sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(p / 100 * b.length))]; };
+function resetSeries() { for (const k of ['mid', 'micro', 'obi', 'rate', 'lag', 'bins', 'incidents']) S[k] = []; S.px = SYMS[sym].px; S.lagv = 0; S.o = 0; }
+function stageSamples(burst, inject) {
+  const out = [[], [], [], []];
+  for (let i = 0; i < 47; i++) {
+    out[0].push(2.6 * Math.exp(0.35 * randn()));
+    out[1].push(1.9 * Math.exp(0.45 * randn()) * (1 + burst * 3.2));
+    out[2].push(0.9 * Math.exp(0.3 * randn()) + inject);
+    out[3].push(1.5 * Math.exp(0.4 * randn()));
+  }
+  return out;
+}
+function step() {
+  S.t++;
+  if (S.burst <= 0 && Math.random() < 0.004) { S.burst = 25 + Math.random() * 35; logEv('warning', 'Quote burst started'); }
+  const b = S.burst > 0 ? 1 : 0; if (b) S.burst--;
+  S.px += (randn() * 0.9 + (b ? randn() * 2.2 : 0)) * SYMS[sym].tick * 12;
+  S.o = Math.max(-1, Math.min(1, S.o * 0.92 + randn() * 0.12));
+  const spread = SYMS[sym].tick * (b ? 4 : 2);
+  S.mid.push(S.px); S.micro.push(S.px + S.o * spread / 2); S.obi.push(S.o);
+  const rate = (b ? 260 : 95) + randn() * 8; S.rate.push(rate);
+  S.lagv = Math.max(0, S.lagv + (rate - 180) / 10); S.lag.push(S.lagv);
+  for (const k of ['mid', 'micro', 'obi', 'rate', 'lag']) if (S[k].length > N) S[k].shift();
+  if (S.t % 10 === 0) closeBin(b);
+  if (S.t % 50 === 0 && Math.random() < 0.15) { S.drops++; logEv('warning', 'Frame dropped for this client; state kept, smoothness lost'); }
+  bookStep(b);
+}
+function closeBin(b) {
+  const inj = S.test ? S.test.delta : 0;
+  const smp = stageSamples(b ? Math.min(1, S.lagv / 60) : 0, inj);
+  const bin = { p50: smp.map(a => pctile(a, 50)), p99: smp.map(a => pctile(a, 99)), test: !!S.test, burst: !!b, lag: S.lagv };
+  bin.total99 = bin.p99.reduce((a, c) => a + c, 0);
+  bin.samples = smp[0].map((_, i) => smp.reduce((a, st) => a + st[i], 0));
+  S.bins.push(bin); if (S.bins.length > BINS) S.bins.shift();
+  if (S.test && --S.test.left <= 0) finishTest();
+  const quiet = S.bins.filter(x => !x.test && !x.burst);
+  const base = quiet.length ? pctile(quiet.map(x => x.total99), 50) : 12;
+  const flagged = bin.total99 > base * 1.8 && !bin.test;
+  if (flagged && !S.incidents[S.incidents.length - 1]) logEv('serious', `Latency incident: P99 ${bin.total99.toFixed(0)} ms vs ${base.toFixed(0)} ms quiet baseline`);
+  S.incidents.push(flagged);
+  if (S.incidents.length > BINS) S.incidents.shift();
+  S.sloHist.push(bin.total99); if (S.sloHist.length > BINS) S.sloHist.shift();
+}
+function startTest() {
+  if (S.test) return;
+  S.test = { delta: 40, left: 4, at: S.bins.length };
+  logEv('info', 'Self-test started: hiding 40 ms in stage 3');
+  document.getElementById('calHead').textContent = 'Self-test running…';
+  document.getElementById('calBody').textContent = 'Hiding 40 ms inside stage 3 for four seconds. Pulse will now try to find it.';
+}
+function finishTest() {
+  const t = S.test; S.test = null;
+  const pre = S.bins.slice(0, S.bins.length - t.left - 4).filter(x => !x.test && !x.burst).slice(-12);
+  const inb = S.bins.slice(-4);
+  const base = [0, 1, 2, 3].map(i => pre.length ? pctile(pre.map(x => x.p50[i]), 50) : 0);
+  const now = [0, 1, 2, 3].map(i => inb.reduce((a, x) => a + x.p50[i], 0) / inb.length);
+  const d = now.map((v, i) => v - base[i]);
+  const found = d.indexOf(Math.max(...d)), err = d[2] - t.delta;
+  const others = d.filter((_, i) => i !== 2).map(Math.abs), maxOther = Math.max(...others);
+  const ok = found === 2 && Math.abs(err) < 3 && maxOther < 1.5;
+  const pos = d.map(v => Math.max(0, v)), conf = pos[found] / (pos.reduce((a, c) => a + c, 0) || 1);
+  S.lastTest = { at: Date.now(), ok, found, err, maxOther, measured: d[2], conf };
+  logEv(ok ? 'good' : 'critical', ok ? `Self-test passed: found +${d[2].toFixed(1)} ms in stage 3 (${Math.round(conf * 100)}% confident)` : `Self-test failed: blamed stage ${found + 1}`);
+  renderCal();
+}
+function renderCal() {
+  const r = S.lastTest; if (!r) return;
+  const head = document.getElementById('calHead'), body = document.getElementById('calBody');
+  if (r.ok) {
+    head.textContent = 'Passed. We found the 40 ms where we hid it.';
+    body.textContent = `Stage 3 reported +${r.measured.toFixed(1)} ms (off by ${r.err >= 0 ? '+' : '−'}${Math.abs(r.err).toFixed(1)} ms). The other three stages moved less than ${Math.max(0.5, Math.ceil(r.maxOther * 2) / 2).toFixed(1)} ms. Confidence in the attribution: ${Math.round(r.conf * 100)}%.`;
+  } else {
+    head.textContent = r.found !== 2 ? 'Failed. We blamed the wrong stage.' : 'Failed. Right stage, wrong size.';
+    body.textContent = `Hid 40 ms in stage 3; the waterfall pointed at stage ${r.found + 1} and measured +${r.measured.toFixed(1)} ms there. Treat latency numbers as unverified until this passes.`;
+  }
+}
+
+// ---------- canvas helpers ----------
+const cv = {};
+function setup(id) {
+  const c = document.getElementById(id), dpr = window.devicePixelRatio || 1;
+  if (!c.dataset.h) c.dataset.h = c.getAttribute('height'); // canvas.height is overwritten below, so keep the CSS height here
+  const h = +c.dataset.h, w = c.clientWidth;
+  c.width = w * dpr; c.height = h * dpr; c.style.height = h + 'px';
+  const x = c.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  cv[id] = { c, x, w, h }; return cv[id];
+}
+const PAD = { l: 44, r: 10, t: 6, b: 18 };
+function axes(g, ymin, ymax, ticks, fmt, xlabels = true) {
+  const { x, w, h } = g; x.clearRect(0, 0, w, h);
+  x.strokeStyle = C.grid; x.lineWidth = 1; x.fillStyle = C.muted; x.font = '10px ' + css('--font-ui'); x.textAlign = 'right'; x.textBaseline = 'middle';
+  for (let i = 0; i <= ticks; i++) {
+    const v = ymin + (ymax - ymin) * i / ticks, y = PAD.t + (h - PAD.t - PAD.b) * (1 - i / ticks);
+    x.beginPath(); x.moveTo(PAD.l, Math.round(y) + .5); x.lineTo(w - PAD.r, Math.round(y) + .5); x.stroke();
+    x.fillText(fmt(v), PAD.l - 6, y);
+  }
+  if (xlabels) { x.textAlign = 'center'; x.textBaseline = 'top'; [0, 15, 30, 45, 60].forEach(s => { x.fillText(s === 60 ? 'now' : `−${60 - s}s`, PAD.l + (w - PAD.l - PAD.r) * s / 60, h - PAD.b + 4); }); }
+}
+const X = (g, i, n) => PAD.l + (g.w - PAD.l - PAD.r) * (i / (n - 1));
+const Y = (g, v, a, b) => PAD.t + (g.h - PAD.t - PAD.b) * (1 - (v - a) / (b - a));
+function line(g, data, col, a, b, n = N) {
+  const x = g.x; x.strokeStyle = col; x.lineWidth = 2; x.lineJoin = x.lineCap = 'round'; x.beginPath();
+  const off = n - data.length; data.forEach((v, i) => { const px = X(g, i + off, n), py = Y(g, v, a, b); i ? x.lineTo(px, py) : x.moveTo(px, py); }); x.stroke();
+}
+function shadeIncidents(g) {
+  const inc = S.incidents, x = g.x, bw = (g.w - PAD.l - PAD.r) / BINS;
+  x.fillStyle = 'rgba(236,131,90,0.12)';
+  inc.forEach((f, i) => { if (f) { const px = PAD.l + (g.w - PAD.l - PAD.r) * ((i + (BINS - inc.length)) / BINS); x.fillRect(px, PAD.t, bw, g.h - PAD.t - PAD.b); } });
+}
+function crosshair(g) {
+  if (hover == null) return;
+  const px = PAD.l + (g.w - PAD.l - PAD.r) * hover, x = g.x;
+  x.strokeStyle = C.sec; x.lineWidth = 1; x.beginPath(); x.moveTo(Math.round(px) + .5, PAD.t); x.lineTo(Math.round(px) + .5, g.h - PAD.b); x.stroke();
+}
+
+// ---------- panels ----------
+let hover = null, pinned = null, hitBars = [];
+function drawMid() {
+  const g = setup('cMid'); if (!S.mid.length) return;
+  const all = S.mid.concat(S.micro), lo = Math.min(...all), hi = Math.max(...all), pad = (hi - lo) * .1 || 1, a = lo - pad, b = hi + pad;
+  axes(g, a, b, 4, v => v.toFixed(SYMS[sym].tick < 0.1 ? 2 : 0));
+  line(g, S.mid, C.sec, a, b);
+  const x = g.x, n = S.micro.length, off = N - n;
+  for (let i = 1; i < n; i++) { const up = S.micro[i] >= S.mid[i]; x.strokeStyle = up ? C.bid : C.ask; x.lineWidth = 2; x.beginPath();
+    x.moveTo(X(g, i - 1 + off, N), Y(g, S.micro[i - 1], a, b)); x.lineTo(X(g, i + off, N), Y(g, S.micro[i], a, b)); x.stroke(); }
+  if (n) { const px = X(g, N - 1, N), py = Y(g, S.mid[n - 1], a, b); x.fillStyle = C.surface; x.beginPath(); x.arc(px, py, 6, 0, 7); x.fill(); x.fillStyle = C.sec; x.beginPath(); x.arc(px, py, 4, 0, 7); x.fill(); }
+  crosshair(g);
+}
+function drawObi() {
+  const g = setup('cObi'); axes(g, -1, 1, 2, v => v.toFixed(1), false); const x = g.x, n = S.obi.length, off = N - n;
+  const z = Y(g, 0, -1, 1), bw = Math.max(1, (g.w - PAD.l - PAD.r) / N - 0.5);
+  for (let i = 0; i < n; i++) { const v = S.obi[i], px = X(g, i + off, N), py = Y(g, v, -1, 1); x.fillStyle = v >= 0 ? C.bid : C.ask; x.fillRect(px, Math.min(z, py), bw, Math.abs(py - z)); }
+  x.strokeStyle = C.base; x.beginPath(); x.moveTo(PAD.l, Math.round(z) + .5); x.lineTo(g.w - PAD.r, Math.round(z) + .5); x.stroke(); crosshair(g);
+}
+function drawAnat() {
+  const g = setup('cAnat'), key = pct === 99 ? 'p99' : 'p50', bins = S.bins;
+  const maxT = Math.max(12, ...bins.map(b => b[key].reduce((a, c) => a + c, 0)));
+  const ymax = Math.ceil(maxT / 5) * 5; axes(g, 0, ymax, 4, v => v.toFixed(0) + ' ms');
+  const x = g.x, slot = (g.w - PAD.l - PAD.r) / BINS, bw = Math.min(14, slot - 2); hitBars = [];
+  bins.forEach((b, bi) => {
+    const px = PAD.l + slot * (bi + BINS - bins.length) + (slot - bw) / 2; let acc = 0;
+    b[key].forEach((v, si) => {
+      const y1 = Y(g, acc, 0, ymax), y0 = Y(g, acc + v, 0, ymax) , top = si === 3;
+      x.fillStyle = C.stages[si]; const hgt = Math.max(1, y1 - y0 - 2);
+      if (top) { const r = Math.min(4, hgt); x.beginPath(); x.moveTo(px, y1 - 2); x.lineTo(px, y0 + r); x.arcTo(px, y0, px + r, y0, r); x.lineTo(px + bw - r, y0); x.arcTo(px + bw, y0, px + bw, y0 + r, r); x.lineTo(px + bw, y1 - 2); x.fill(); }
+      else x.fillRect(px, y0, bw, hgt);
+      acc += v;
+    });
+    if (b.test) { x.fillStyle = C.sec; x.fillRect(px, PAD.t, bw, 2); }
+    hitBars.push({ x0: px - 1, x1: px + bw + 1, bi });
+    if (pinned === bi + (BINS - bins.length) - 0) { x.strokeStyle = C.sec; x.lineWidth = 1; x.strokeRect(px - 2, PAD.t, bw + 4, g.h - PAD.t - PAD.b); }
+  });
+}
+function drawTimeline() {
+  const gq = setup('cQuote'); const rmax = Math.max(300, ...S.rate); axes(gq, 0, rmax, 2, v => v.toFixed(0) + '/s', false);
+  shadeIncidents(gq); line(gq, S.rate, C.seq, 0, rmax); crosshair(gq);
+  const gl = setup('cLag'); const lmax = Math.max(50, ...S.lag); axes(gl, 0, lmax, 3, v => v.toFixed(0));
+  shadeIncidents(gl); line(gl, S.lag, C.sec, 0, lmax); crosshair(gl);
+  const n = S.incidents.filter(Boolean).length;
+  document.getElementById('tlNote').innerHTML = n ? `<span class="incident">⚠ ${n} s flagged</span> in this window: shaded where total P99 ran 1.8× above the quiet baseline.` : 'No incidents in this window. Shaded bands will mark seconds where latency ran well above the quiet baseline.';
+}
+
+// ---------- chrome ----------
+function ageClass(ms) { return ms < 50 ? ['good', 'fresh'] : ms < 150 ? ['warning', 'aging'] : ms < 500 ? ['serious', 'stale'] : ['critical', 'not to be trusted']; }
+function updateChrome() {
+  const last = S.mid.length - 1; if (last < 0) return;
+  const age = 6 + Math.abs(randn()) * 4 + (S.lagv > 40 ? S.lagv * 0.15 : 0) + (S.test ? 20 : 0);
+  const [cls, word] = ageClass(age);
+  const badge = document.getElementById('ageBadge'); badge.className = 'badge ' + cls;
+  document.getElementById('ageText').textContent = `${word} · ${age.toFixed(0)} ms old`;
+  document.querySelectorAll('.chip').forEach(ch => { ch.className = 'chip ' + cls; ch.textContent = `${cls === 'good' ? '●' : cls === 'warning' ? '▲' : '■'} ${age.toFixed(0)} ms · ${word}`; });
+  document.getElementById('heroMid').textContent = S.mid[last].toLocaleString(undefined, { minimumFractionDigits: SYMS[sym].tick < .1 ? 2 : 1, maximumFractionDigits: SYMS[sym].tick < .1 ? 2 : 1 });
+  const spr = SYMS[sym].tick * (S.burst > 0 ? 4 : 2);
+  document.getElementById('heroSub').textContent = `mid · USD · ${SYMS[sym].id}`;
+  document.getElementById('spreadNote').textContent = `spread ${spr.toFixed(2)} · ${Math.random() < 0.2 ? 'no recent trade, so effective spread is blank, not zero' : 'effective spread live'}`;
+  document.getElementById('tLag').textContent = Math.round(S.lagv);
+  document.getElementById('tRate').textContent = Math.round(S.rate[last]);
+  document.getElementById('tDrop').textContent = S.drops;
+  const p99 = S.sloHist.length ? pctile(S.sloHist, 99) : 0, tSlo = document.getElementById('tSlo');
+  tSlo.textContent = S.sloHist.length ? (p99 < 100 ? 'Met' : 'Breached') : '—'; tSlo.style.color = p99 < 100 ? 'var(--ink-primary)' : 'var(--status-critical)';
+  const cb = document.getElementById('calBadge'), ct = document.getElementById('calText');
+  if (S.test) { cb.className = 'badge warning'; cb.style.opacity = 1; ct.textContent = 'Self-test running…'; }
+  else if (S.lastTest) { const s = Math.round((Date.now() - S.lastTest.at) / 1000), left = CAL_TTL - s, expired = left <= 0;
+    cb.className = 'badge ' + (!S.lastTest.ok ? 'critical' : expired ? 'warning' : 'good');
+    cb.style.opacity = expired ? 1 : 1 - 0.45 * Math.min(1, s / CAL_TTL);
+    ct.textContent = !S.lastTest.ok ? `Calibration failed · ${s}s ago`
+      : expired ? `Calibration expired · ${s}s old, latency numbers unverified`
+      : `Calibrated ±${Math.max(0.1, Math.abs(S.lastTest.err)).toFixed(1)} ms · valid ${left >= 60 ? Math.ceil(left / 60) + ' more min' : left + ' s'}`;
+    document.getElementById('calAgo').textContent = `last run ${s}s ago`;
+    if (s >= CAL_RETEST) startTest(); }
+  const unverified = !S.lastTest || !S.lastTest.ok || Date.now() - S.lastTest.at > CAL_TTL * 1000;
+  document.getElementById('tSlo').title = unverified ? 'Latency figures are unverified until the next passing self-test.' : '';
+  if (unverified && S.sloHist.length) { const t = document.getElementById('tSlo'); t.textContent = 'Unverified'; t.style.color = 'var(--status-warning)'; }
+}
+function render() { drawMid(); drawObi(); drawAnat(); drawTimeline(); drawHist(); updateChrome(); renderBook(); if (S.t % 10 === 0 || !document.getElementById('strip').children.length) renderStrip(); if (S.t % 5 === 0) renderFeeds(); if (logDirty) renderLog(); renderStatus(); }
+
+// ---------- more dashboard elements ----------
+const LOG = []; let logDirty = true;
+function logEv(level, text) { LOG.unshift({ t: new Date().toISOString().substr(11, 8), level, text }); if (LOG.length > 40) LOG.pop(); logDirty = true; }
+const W = SYMS.map(q => ({ px: q.px, h: [] }));
+const L = { bid: [3, 4, 3.5, 5, 4], ask: [3.5, 4, 3, 4.5, 4] }, TAPE = [], GAPS = { binance: 0, coinbase: 0 };
+function bookStep(b) {
+  W.forEach((w, i) => { if (i === sym) w.px = S.px; else w.px += randn() * SYMS[i].tick * 11; if (S.t % 10 === 0) { w.h.push(w.px); if (w.h.length > 60) w.h.shift(); } });
+  for (let i = 0; i < 5; i++) {
+    const tb = (2.5 + i * 0.7 + Math.abs(randn()) * 1.2) * (1 + S.o * 0.8), ta = (2.5 + i * 0.7 + Math.abs(randn()) * 1.2) * (1 - S.o * 0.8);
+    L.bid[i] += (Math.max(.3, tb) - L.bid[i]) * .2; L.ask[i] += (Math.max(.3, ta) - L.ask[i]) * .2;
+  }
+  if (Math.random() < (b ? .8 : .3)) { const buy = Math.random() < .5 + S.o * .3;
+    TAPE.unshift({ t: new Date().toISOString().substr(11, 8), buy, px: S.px + (buy ? 1 : -1) * SYMS[sym].tick, q: Math.exp(randn() * .9 - 1.2) }); if (TAPE.length > 11) TAPE.pop(); }
+  if (Math.random() < .0012) { GAPS.binance++; logEv('warning', 'Binance sequence gap: 1 update missing, book resynced'); }
+}
+function renderBook() {
+  const tick = SYMS[sym].tick, d = tick < .1 ? 2 : 1, mx = Math.max(...L.bid, ...L.ask);
+  const row = (cls, px, q) => `<div class="lr ${cls}"><i style="width:${(q / mx * 100).toFixed(0)}%"></i><span>${px.toFixed(d)}</span><span>${q.toFixed(2)}</span></div>`;
+  let h = '<div class="th">Price · size (mock depth, 5 levels)</div>';
+  for (let i = 4; i >= 0; i--) h += row('ask', S.px + tick * (i + 1), L.ask[i]);
+  h += `<div class="lr mid"><span>${S.px.toFixed(d)}</span><span>spread ${(tick * 2).toFixed(d)}</span></div>`;
+  for (let i = 0; i < 5; i++) h += row('bid', S.px - tick * (i + 1), L.bid[i]);
+  document.getElementById('ladder').innerHTML = h;
+  document.getElementById('tape').innerHTML = '<div class="th">Time · price · size (aggressor dot: blue buy, red sell)</div>' +
+    TAPE.map(t => `<div class="tr"><span>${t.t}</span><span class="px"><i class="d" style="background:${t.buy ? C.bid : C.ask}"></i>${t.px.toFixed(d)} ${t.buy ? '▲' : '▼'}</span><span class="q">${t.q.toFixed(3)}</span></div>`).join('');
+}
+function spark(h) { if (h.length < 2) return ''; const lo = Math.min(...h), hi = Math.max(...h), r = hi - lo || 1;
+  return `<svg width="70" height="18" aria-hidden="true"><polyline fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="${h.map((v, i) => `${(i / (h.length - 1) * 70).toFixed(1)},${(17 - (v - lo) / r * 16).toFixed(1)}`).join(' ')}"/></svg>`; }
+function renderStrip() {
+  const el = document.getElementById('strip');
+  el.innerHTML = SYMS.map((q, i) => { const h = W[i].h, chg = h.length > 1 ? (h[h.length - 1] / h[0] - 1) * 100 : 0, d = q.tick < .1 ? 2 : 1;
+    return `<button class="pill" data-i="${i}" aria-pressed="${i === sym}"><b>${q.id}</b><span class="num">${W[i].px.toFixed(d)}</span>${spark(h)}<span class="chg num">${chg >= 0 ? '▲' : '▼'} ${Math.abs(chg).toFixed(2)}% · 60 s</span></button>`; }).join('');
+}
+document.getElementById('strip').addEventListener('click', e => { const b = e.target.closest('.pill'); if (b) document.getElementById('tabs').children[+b.dataset.i].click(); });
+function renderFeeds() {
+  const r = S.rate[S.rate.length - 1] || 0, age = 8 + Math.abs(randn()) * 5 + (S.lagv > 40 ? S.lagv * .12 : 0);
+  const rows = [['Binance', 'depth20@100ms', r * .62, GAPS.binance], ['Coinbase', 'level2 + ticker', r * .38, GAPS.coinbase]];
+  document.getElementById('feeds').innerHTML = '<tr><th>Venue</th><th>Stream</th><th>msg/s</th><th>Gaps</th><th>Last msg</th></tr>' +
+    rows.map(x => { const st = x[3] > 0 ? 'warning' : 'good'; return `<tr><td><i class="sdot ${st}"></i>${x[0]}</td><td>${x[1]}</td><td>${Math.round(x[2])}</td><td>${x[3]}</td><td>${age.toFixed(0)} ms ago</td></tr>`; }).join('');
+  document.getElementById('sbFeeds').innerHTML = rows.map(x => `<i class="sdot ${x[3] > 0 ? 'warning' : 'good'}"></i>${x[0]} ${Math.round(x[2])}/s`).join('   ');
+}
+const LVL = { info: ['ℹ', ''], good: ['✓', ''], warning: ['▲', ''], serious: ['■', ''], critical: ['✕', ''] };
+function renderLog() { logDirty = false; const el = document.getElementById('log'); el.textContent = '';
+  LOG.slice(0, 12).forEach(e => { const r = document.createElement('div'); r.className = 'le';
+    [e.t, LVL[e.level][0], e.text].forEach((v, i) => { const c = document.createElement('span'); if (i === 1) c.className = 'ic'; c.textContent = v; r.appendChild(c); }); el.appendChild(r); }); }
+function drawHist() {
+  const g = setup('cHist'), x = g.x, samples = S.bins.slice(-30).filter(b => !b.test).flatMap(b => b.samples || []);
+  if (!samples.length) return; const max = 60, nb = 30, cnt = new Array(nb).fill(0);
+  samples.forEach(v => cnt[Math.min(nb - 1, Math.floor(v / max * nb))]++);
+  const ymax = Math.log1p(Math.max(10, ...cnt));
+  axes(g, 0, 1, 2, v => Math.round(Math.expm1(v * ymax)), false);
+  const slot = (g.w - PAD.l - PAD.r) / nb, bw = Math.min(14, slot - 2);
+  cnt.forEach((c, i) => { if (!c) return; const px = PAD.l + slot * i + (slot - bw) / 2, y = Y(g, Math.log1p(c) / ymax, 0, 1), y0 = Y(g, 0, 0, 1);
+    x.fillStyle = 'rgba(255,255,255,.55)'; const r = Math.min(4, y0 - y); x.beginPath(); x.moveTo(px, y0); x.lineTo(px, y + r); x.arcTo(px, y, px + r, y, r); x.lineTo(px + bw - r, y); x.arcTo(px + bw, y, px + bw, y + r, r); x.lineTo(px + bw, y0); x.fill(); });
+  x.fillStyle = C.muted; x.font = '10px ' + css('--font-ui'); x.textAlign = 'center'; x.textBaseline = 'top';
+  x.textAlign = 'left'; x.fillText('ms', 4, g.h - PAD.b + 4); [0, 15, 30, 45, 60].forEach(v => { x.textAlign = v === 60 ? 'right' : 'center'; x.fillText(v === 60 ? '60+' : v + '', PAD.l + (g.w - PAD.l - PAD.r) * v / 60, g.h - PAD.b + 4); });
+  [[50, 'P50'], [99, 'P99']].forEach(([p, lb]) => { const v = pctile(samples, p), px = PAD.l + (g.w - PAD.l - PAD.r) * Math.min(v, 60) / 60;
+    x.strokeStyle = '#fff'; x.lineWidth = 1; x.beginPath(); x.moveTo(Math.round(px) + .5, PAD.t); x.lineTo(Math.round(px) + .5, g.h - PAD.b); x.stroke();
+    x.fillStyle = '#fff'; x.textAlign = px > g.w - 90 ? 'right' : 'left'; x.textBaseline = 'top'; x.fillText(`${lb} ${v.toFixed(1)} ms`, px + (px > g.w - 90 ? -4 : 4), PAD.t + (p === 99 ? 12 : 0)); });
+}
+function renderStatus() { document.getElementById('sbClock').textContent = new Date().toISOString().substr(11, 8) + ' UTC'; document.getElementById('sbSeq').textContent = 'frame #' + S.t; }
+
+// ---------- interaction ----------
+const tip = document.getElementById('tip');
+function showTip(e, html) { tip.innerHTML = html; tip.style.display = 'block'; tip.style.left = Math.min(e.clientX + 14, innerWidth - 220) + 'px'; tip.style.top = (e.clientY + 14) + 'px'; }
+const hideTip = () => tip.style.display = 'none';
+function row(color, label, val) { return `<div class="row"><span><i class="k" style="background:${color}"></i>${label}</span><b class="num">${val}</b></div>`; }
+['cMid', 'cObi', 'cQuote', 'cLag'].forEach(id => {
+  const c = document.getElementById(id);
+  c.addEventListener('pointermove', e => {
+    const r = c.getBoundingClientRect(), f = (e.clientX - r.left - PAD.l) / (r.width - PAD.l - PAD.r);
+    if (f < 0 || f > 1) { hover = null; hideTip(); return; } hover = f; const i = Math.min(S.mid.length - 1, Math.round(f * (N - 1)) - (N - S.mid.length));
+    if (i < 0) return; const ago = ((N - 1 - Math.round(f * (N - 1))) / 10).toFixed(1);
+    showTip(e, `<div style="color:var(--ink-muted);margin-bottom:4px">${ago === '0.0' ? 'now' : '−' + ago + ' s'}</div>` +
+      row(C.sec, 'mid', S.mid[i].toFixed(2)) + row(S.micro[i] >= S.mid[i] ? C.bid : C.ask, 'microprice', S.micro[i].toFixed(2)) +
+      row(C.bid, 'imbalance', S.obi[i].toFixed(2)) + row(C.seq, 'quotes/s', Math.round(S.rate[i])) + row(C.sec, 'consumer lag', Math.round(S.lag[i]) + ' msgs'));
+    if (paused) render();
+  });
+  c.addEventListener('pointerleave', () => { hover = null; hideTip(); if (paused) render(); });
+});
+const cAnat = document.getElementById('cAnat');
+function barAt(e) { const r = cAnat.getBoundingClientRect(), px = e.clientX - r.left; return hitBars.find(b => px >= b.x0 - 3 && px <= b.x1 + 3); }
+cAnat.addEventListener('pointermove', e => {
+  const h = barAt(e); if (!h) return hideTip(); const b = S.bins[h.bi], k = pct === 99 ? 'p99' : 'p50';
+  showTip(e, `<div style="color:var(--ink-muted);margin-bottom:4px">${BINS - 1 - (h.bi + BINS - S.bins.length)} s ago · ${k.toUpperCase()}${b.test ? ' · self-test' : ''}</div>` + b[k].map((v, i) => row(C.stages[i], STAGE_NAMES[i], v.toFixed(1) + ' ms')).join(''));
+});
+cAnat.addEventListener('pointerleave', hideTip);
+cAnat.addEventListener('click', e => {
+  const h = barAt(e); if (!h) { pinned = null; document.getElementById('pin').textContent = 'Click a bar to pin one second and read it stage by stage.'; return; }
+  pinned = h.bi + (BINS - S.bins.length); const b = S.bins[h.bi], tot = b.p99.reduce((a, c) => a + c, 0);
+  const quiet = S.bins.filter(x => !x.test && !x.burst), typ = [0, 1, 2, 3].map(i => quiet.length ? pctile(quiet.map(x => x.p99[i]), 50) : 0);
+  const ex = b.p99.map((v, i) => Math.max(0, v - typ[i])), exT = ex.reduce((a, c) => a + c, 0);
+  const order = [0, 1, 2, 3].sort((i, j) => ex[j] - ex[i]), top = order[0], sec = order[1];
+  let verdict;
+  if (exT < 2) verdict = 'Nothing unusual: every stage is within its typical range.';
+  else if ((ex[top] - ex[sec]) / exT < 0.25) verdict = `Not sure. Stage ${top + 1} (${Math.round(ex[top] / exT * 100)}%) or stage ${sec + 1} (${Math.round(ex[sec] / exT * 100)}%) — this data can't separate them.`;
+  else verdict = `${Math.round(ex[top] / exT * 100)}% of the extra time is in stage ${top + 1} (${STAGE_NAMES[top]}).`;
+  document.getElementById('pin').innerHTML = `<b>Pinned.</b> P99 total ${tot.toFixed(1)} ms. ${verdict}${b.burst ? ' A burst of quote updates was in progress.' : ''}${b.test ? ' This second was part of a self-test, so the extra time is deliberate.' : ''}`;
+});
+document.getElementById('pctSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; pct = +b.dataset.p;
+  document.querySelectorAll('#pctSeg button').forEach(x => x.setAttribute('aria-pressed', x === b)); render(); });
+document.getElementById('btnTest').addEventListener('click', startTest);
+document.querySelectorAll('.chip').forEach(ch => ch.addEventListener('click', () => { document.getElementById('cAnat').scrollIntoView({ behavior: 'smooth', block: 'center' }); }));
+addEventListener('keydown', e => { if (e.key === ' ') { paused = !paused; e.preventDefault(); } else if (e.key.toLowerCase() === 'p') document.querySelector(`#pctSeg button[data-p="${pct === 99 ? 50 : 99}"]`).click(); else if (e.key.toLowerCase() === 't') startTest(); });
+addEventListener('resize', render);
+
+const tabs = document.getElementById('tabs');
+SYMS.forEach((s, i) => { const b = document.createElement('button'); b.className = 'tab'; b.textContent = s.id; b.setAttribute('aria-pressed', i === 0);
+  b.onclick = () => { sym = i; [...tabs.children].forEach((x, j) => x.setAttribute('aria-pressed', j === i)); resetSeries(); warm(); }; tabs.appendChild(b); });
+
+function warm() { for (let i = 0; i < 300; i++) step(); }
+resetSeries(); warm();
+setInterval(() => { if (!paused) { step(); render(); } }, 100);
+setTimeout(startTest, 6000);
+</script>
+</body>
+</html>
