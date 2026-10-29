@@ -195,6 +195,23 @@ class Aggregator:
         k = self._keys.get((venue, symbol))
         return list(k.bins) if k else []
 
+    def window(self, venue: str, symbol: str, since_wall_ns: int) -> list[DerivedRec]:
+        """Derived records consumed at or after `since_wall_ns` (oldest first). Used for the rolling-1s snapshot."""
+        k = self._keys.get((venue, symbol))
+        if not k:
+            return []
+        out: list[DerivedRec] = []
+        for r in reversed(k.raw):
+            if r.consume_wall_ns < since_wall_ns:
+                break
+            out.append(r)
+        out.reverse()
+        return out
+
+    def recent_bins(self, venue: str, symbol: str, n: int) -> list[Bin]:
+        k = self._keys.get((venue, symbol))
+        return list(k.bins)[-n:] if k else []
+
     def assert_caps(self) -> None:
         """Memory bound (P1-T2 spec): no ring may exceed its configured cap."""
         for key, k in self._keys.items():

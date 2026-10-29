@@ -1,6 +1,8 @@
 """Kafka ingest (P1-T1): derived features + raw TRADES for the two live venues.
 
-- Own consumer group `pulse-ingest`; never joins or commits as `fathom-processor` (offsets are not committed at all).
+- Own consumer group `pulse-ingest-<pid>`; never joins or commits as `fathom-processor` (offsets are not committed at all).
+  Unique per process on purpose: a shared id makes concurrent instances (e.g. a QA re-run next to the server) SPLIT the
+  partitions between them, and each silently sees only part of the stream (found Day 2).
 - confluent-kafka is synchronous: a dedicated poll thread decodes and hands batches to an asyncio.Queue.
 - Explicit topic list on purpose. A `market.derived.*` regex would also match the stale `binance-replay` and
   `databento.es` topics and create symbols that never tick.
@@ -14,6 +16,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import threading
 import time
 from collections import Counter
@@ -27,7 +30,7 @@ from pulse.ingest.rings import DerivedRec, TradeRec
 
 # Host listener from fathom/docker-compose.yml ("19092:19092 # Kafka API (host)"), same default as fathom's processor.
 BOOTSTRAP = "localhost:19092"
-GROUP = "pulse-ingest"
+GROUP_PREFIX = "pulse-ingest"   # actual group id = prefix + pid: every Pulse instance must see EVERY message
 DERIVED_TOPICS = ["market.derived.binance.btcusdt", "market.derived.coinbase.btcusd"]
 RAW_TOPICS = ["market.raw.binance.btcusdt", "market.raw.coinbase.btcusd"]
 TOPICS = DERIVED_TOPICS + RAW_TOPICS
@@ -62,10 +65,10 @@ class ClockBridge:
 
 class IngestConsumer:
     def __init__(self, loop: asyncio.AbstractEventLoop, queue: asyncio.Queue, bootstrap: str = BOOTSTRAP,
-                 group: str = GROUP) -> None:
+                 group: Optional[str] = None) -> None:
         self._loop, self._queue = loop, queue
         self._conf = {
-            "bootstrap.servers": bootstrap, "group.id": group,
+            "bootstrap.servers": bootstrap, "group.id": group or f"{GROUP_PREFIX}-{os.getpid()}",
             "auto.offset.reset": "latest", "enable.auto.commit": False,
             "fetch.wait.max.ms": 50,
         }
