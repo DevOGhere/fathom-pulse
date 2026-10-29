@@ -16,10 +16,11 @@ const ageClass = ms => AGE.find(a => ms < a[0]);
 const QUOTE = { binance: 'USDT', coinbase: 'USD' };      // Binance quotes in USDT, not USD
 
 const S = { frame: null, sel: null, tail: {}, lagHist: [], connected: false, everConnected: false, dirty: true,
-  lastSeq: 0, seqGaps: 0, lastDrops: 0, lagHigh: false, log: [], draws: 0, msgs: 0, costs: [], rafTicks: 0, lastStale: false };
+  lastSeq: 0, seqGaps: 0, pct: 99, loc: {}, hits: [], pinned: null, srvEv: [], lastDrops: 0, lagHigh: false, log: [], draws: 0, msgs: 0, costs: [], rafTicks: 0, lastStale: false };
 const TAIL_MS = 60000, TAIL_MAX = 700;
 
-function logEv(level, text) { S.log.unshift({ t: new Date().toTimeString().slice(0, 8), level, text }); if (S.log.length > 40) S.log.pop(); S.logDirty = true; }
+function logEv(level, text) { S.log.unshift({ t_ms: Date.now(), level, text }); if (S.log.length > 40) S.log.pop(); S.logDirty = true; }
+const LOCAL = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);   // stage 4 is only meaningful on the same host clock
 
 // ---------- socket ----------
 let ws, backoff = 500;
@@ -35,6 +36,9 @@ function connect() {
 function ingest(f) {
   if (S.lastSeq && f.seq !== S.lastSeq + 1) S.seqGaps += f.seq - S.lastSeq - 1;
   S.lastSeq = f.seq; S.frame = f;
+  if (LOCAL && f.client.sent_ms) { const sec = Math.floor(Date.now() / 1000); (S.loc[sec] || (S.loc[sec] = [])).push(Date.now() - f.client.sent_ms);
+    for (const k of Object.keys(S.loc)) if (+k < sec - 70) delete S.loc[k]; }
+  S.srvEv = f.events || [];
   if (!S.sel) S.sel = Object.keys(f.series)[0] || null;
   for (const [k, s] of Object.entries(f.series)) {
     const t = S.tail[k] || (S.tail[k] = []);
@@ -60,7 +64,7 @@ function fit(id) {
   c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c.style.height = h + 'px';
   const x = c.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0); cvs[id] = { c, x, w, h };
 }
-const ids = ['cMid', 'cObi', 'cQuote', 'cLag'];
+const ids = ['cMid', 'cObi', 'cQuote', 'cLag', 'cAnat'];
 function fitAll() { ids.forEach(fit); S.dirty = true; }
 new ResizeObserver(fitAll).observe(document.body);
 
@@ -128,18 +132,79 @@ function renderChrome(f, s, w) {
   if (w) { const [, cls, word, glyph] = ageClass(w.derived_age_ms); $('ageBadge').className = 'badge ' + cls; $('ageText').textContent = `${S.sel} · ${word} · ${w.derived_age_ms.toFixed(0)} ms old`; setChips(cls, glyph, `${w.derived_age_ms.toFixed(0)} ms · ${word}`); }
   else { $('ageBadge').className = 'badge'; $('ageText').textContent = 'no data yet'; setChips('', '○', 'no data'); }
   $('tLag').textContent = f.lag.total == null ? 'n/a' : f.lag.total; $('tLag').title = f.lag.ok ? '' : (f.lag.error || '');
-  $('tRate').textContent = w ? w.n : '—'; $('tDrop').textContent = f.client.drops; $('tAge').textContent = f.pulse_age_ms == null ? '—' : Math.round(f.pulse_age_ms);
+  $('tRate').textContent = w ? w.n : '—'; $('tDrop').textContent = f.client.drops;
   if (w) { $('heroMid').textContent = w.mid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     $('heroSub').textContent = `mid · ${QUOTE[S.sel.split('/')[0]] || '?'} · ${S.sel}`;
     $('spreadNote').textContent = `spread ${w.spread_abs.toFixed(2)} · ` + (w.effective_spread == null ? 'effective spread blank: no recent trade' : `effective spread ${w.effective_spread.toFixed(2)}`); }
 }
-function renderAnat(w) {
-  const b = $('anatBody'); b.textContent = ''; if (!w) { b.append(el('span', 'empty', 'Waiting for data…')); return; }
-  const rows = [['1 · producer receive → processor derived', w.stage_recv_to_derived_ms], ['2 · processor derived → Pulse consumed', w.stage_derived_to_consume_ms]];
-  const t = document.createElement('table'); t.className = 'feeds'; const h = t.insertRow(); ['Stage (host-side monotonic)', 'P50 ms', 'P99 ms'].forEach(x => h.append(Object.assign(document.createElement('th'), { textContent: x })));
-  rows.forEach(([n, v]) => { const r = t.insertRow(); [n, v.p50, v.p99].forEach((x, i) => { const c = r.insertCell(); c.textContent = i ? (x == null ? '—' : x.toFixed(1)) : x; }); });
-  b.append(t); b.append(el('div', 'empty', w.neg_stage ? `⚠ ${w.neg_stage} negative stage duration(s): clock-domain assumption broken` : 'No negative stage durations: one clock domain, as designed.'));
+const STAGE_COL = () => [css('--stage-recv'), css('--stage-derive'), css('--stage-pulse'), css('--stage-ws')];
+const STAGE_NAME = ['1 · producer → derived (Fathom)', '2 · derived → Pulse consumed', '3 · consumed → frame built', '4 · sent → your screen (local estimate)'];
+const q = (v, p) => { if (!v || !v.length) return null; const t = [...v].sort((x, y) => x - y); return t[Math.min(t.length - 1, Math.floor(p / 100 * t.length))]; };
+function binStages(s, i) {   // [s1,s2,s3,s4|null] for bin i at the selected percentile
+  const st = s.bins.stages, p = 'p' + S.pct, v = [st['s1_' + p][i], st['s2_' + p][i], st['s3_' + p][i]];
+  if (v.some(x => x == null)) return null;
+  const loc = LOCAL ? S.loc[s.bins.start_s[i]] : null; v.push(loc && loc.length >= 3 ? q(loc, S.pct) : null); return v;
 }
+function drawAnat(now) {
+  const g = cvs.cAnat, s = sel(); if (!s || !s.bins || !s.bins.stages) return emptyChart(g, 'Waiting for data…');
+  const n = s.bins.start_s.length, rows = []; let mx = 20;
+  for (let i = 0; i < n; i++) { const v = binStages(s, i); rows.push(v); if (v) mx = Math.max(mx, v.reduce((a, c) => a + (c || 0), 0)); }
+  const ymax = Math.ceil(mx / 20) * 20; axes(g, 0, ymax, 4, v => v.toFixed(0) + ' ms');
+  const x = g.x, cols = STAGE_COL(), bw = Math.min(12, (g.w - PAD.l - PAD.r) / 60 - 2); S.hits = [];
+  rows.forEach((v, i) => { const X = px(g, (s.bins.start_s[i] + 1) * 1000, now) - bw - 1; S.hits.push({ x0: X - 1, x1: X + bw + 1, i });
+    if (!v) return; let acc = 0;
+    v.forEach((val, k) => { if (val == null || val <= 0) return; const y1 = py(g, acc, 0, ymax), y0 = py(g, acc + val, 0, ymax), h = Math.max(1, y1 - y0 - 2); x.fillStyle = cols[k];
+      if (k === 3 || (k === 2 && v[3] == null)) { const r = Math.min(4, h); x.beginPath(); x.moveTo(X, y1 - 2); x.lineTo(X, y0 + r); x.arcTo(X, y0, X + r, y0, r); x.lineTo(X + bw - r, y0); x.arcTo(X + bw, y0, X + bw, y0 + r, r); x.lineTo(X + bw, y1 - 2); x.fill(); }
+      else x.fillRect(X, y0, bw, h); acc += val; });
+    if (s.bins.induced[i]) { x.fillStyle = '#fff'; x.fillRect(X, PAD.t, bw, 2); }
+    if (S.pinned === s.bins.start_s[i]) { x.strokeStyle = C.sec; x.lineWidth = 1; x.strokeRect(X - 2, PAD.t, bw + 4, g.h - PAD.t - PAD.b); } });
+}
+function attribution(s, i) {   // where did the EXTRA time go, relative to what is typical for this venue? (stage 4 excluded: local only)
+  const st = s.bins.stages, p = 'p' + S.pct, quiet = [];
+  for (let j = 0; j < s.bins.start_s.length; j++) if (!s.bins.induced[j] && st['s1_' + p][j] != null) quiet.push(j);
+  const typ = ['s1', 's2', 's3'].map(k => q(quiet.map(j => st[k + '_' + p][j]), 50) || 0);
+  const ex = ['s1', 's2', 's3'].map((k, m) => Math.max(0, st[k + '_' + p][i] - typ[m])), T = ex.reduce((a, c) => a + c, 0), ord = [0, 1, 2].sort((a, b) => ex[b] - ex[a]);
+  if (T < 2) return 'Nothing unusual: every stage is within its typical range.';
+  if ((ex[ord[0]] - ex[ord[1]]) / T < 0.25) return `Not sure. Stage ${ord[0] + 1} (${Math.round(ex[ord[0]] / T * 100)}%) or stage ${ord[1] + 1} (${Math.round(ex[ord[1]] / T * 100)}%): this data cannot separate them.`;
+  return `${Math.round(ex[ord[0]] / T * 100)}% of the extra time is in stage ${ord[0] + 1} (${STAGE_NAME[ord[0]]}).`;
+}
+const tipEl = $('tip'), hitAt = e => { const r = $('cAnat').getBoundingClientRect(), X = e.clientX - r.left; return S.hits.find(h => X >= h.x0 - 3 && X <= h.x1 + 3); };
+$('cAnat').addEventListener('pointermove', e => { const h = hitAt(e), s = sel(); if (!h || !s) { tipEl.style.display = 'none'; return; } const v = binStages(s, h.i); if (!v) { tipEl.style.display = 'none'; return; }
+  const cols = STAGE_COL(); tipEl.textContent = ''; const hd = document.createElement('div'); hd.style.cssText = 'color:var(--ink-muted);margin-bottom:4px'; hd.textContent = `${Math.round(Date.now() / 1000 - s.bins.start_s[h.i])} s ago · P${S.pct}${s.bins.induced[h.i] ? ' · INDUCED (self-test)' : ''}`; tipEl.append(hd);
+  v.forEach((val, k) => { const r = document.createElement('div'); r.className = 'row'; const l = document.createElement('span'); const kk = document.createElement('i'); kk.className = 'k'; kk.style.background = cols[k]; l.append(kk, document.createTextNode(STAGE_NAME[k]));
+    const b = document.createElement('b'); b.className = 'num'; b.textContent = val == null ? (k === 3 ? 'n/a' : '—') : val.toFixed(1) + ' ms'; r.append(l, b); tipEl.append(r); });
+  tipEl.style.display = 'block'; tipEl.style.left = Math.min(e.clientX + 14, innerWidth - 300) + 'px'; tipEl.style.top = (e.clientY + 14) + 'px'; });
+$('cAnat').addEventListener('pointerleave', () => { tipEl.style.display = 'none'; });
+$('cAnat').addEventListener('click', e => { const h = hitAt(e), s = sel(), pin = $('pin'); if (!h || !s) { S.pinned = null; pin.textContent = 'Click a bar to pin one second and read it stage by stage.'; S.dirty = true; return; }
+  S.pinned = s.bins.start_s[h.i]; const st = s.bins.stages, p = 'p' + S.pct; const tot = st['s1_' + p][h.i] + st['s2_' + p][h.i] + st['s3_' + p][h.i];
+  pin.textContent = `Pinned. ${S.pct === 99 ? 'P99' : 'P50'} server total ${tot.toFixed(1)} ms (stages 1-3). ${attribution(s, h.i)}${s.bins.induced[h.i] ? ' This second was part of a self-test, so the extra time is deliberate.' : ''}`; S.dirty = true; });
+$('pctSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.pct = +b.dataset.p; document.querySelectorAll('#pctSeg button').forEach(x => x.setAttribute('aria-pressed', x === b)); S.dirty = true; });
+
+function renderCal(f) {
+  const c = f.calibration; if (!c) return; const L = c.last, head = $('calHead'), body = $('calBody'), cb = $('calBadge'), ct = cb.lastElementChild;
+  const left = c.age_s == null ? null : Math.max(0, c.ttl_s - c.age_s), mins = left == null ? '' : (left >= 60 ? Math.ceil(left / 60) + ' more min' : Math.round(left) + ' s');
+  cb.style.opacity = 1; cb.className = 'badge';
+  const tail = L ? ` Confidence ${L.confidence == null ? 'n/a' : Math.round(L.confidence * 100) + '%'} · z-separation ${L.z_sep} · ${c.passed} of ${c.runs} runs passed, ${c.streak} in a row.` : '';
+  if (c.status === 'running') { head.textContent = 'Self-test running…'; body.textContent = c.phase || ''; cb.classList.add('warning'); ct.textContent = 'Self-test running…'; }
+  else if (c.status === 'none') { head.textContent = 'Waiting for the first self-test…'; body.textContent = 'Runs automatically shortly after start, then every 150 s.'; ct.textContent = 'Not calibrated yet'; }
+  else if (c.status === 'valid') { head.textContent = `Passed. We found the ${L.d_ms.toFixed(0)} ms where we hid it.`; body.textContent = L.reason + '.' + tail;
+    cb.classList.add('good'); cb.style.opacity = 1 - 0.45 * Math.min(1, c.age_s / c.ttl_s); ct.textContent = `Calibrated ±${L.tol_ms} ms · valid ${mins}`; }
+  else if (c.status === 'expired') { head.textContent = 'Calibration expired.'; body.textContent = `The last passing self-test is ${Math.round(c.age_s)} s old. Latency figures are unverified until the next one.`; cb.classList.add('warning'); ct.textContent = 'Calibration expired · unverified'; }
+  else if (c.status === 'inconclusive') { head.textContent = 'Inconclusive: not enough samples.'; body.textContent = (L && L.reason) || ''; cb.classList.add('warning'); ct.textContent = 'Calibration inconclusive'; }
+  else { head.textContent = L && L.found === null && /not sure/.test(L.reason || '') ? 'Failed. We were not sure where the delay was.' : 'Failed. We did not find the delay we hid.'; body.textContent = (L ? L.reason + (L.sham_ok ? '' : ' | sham: ' + L.sham_reason) + '.' : '') + ' Treat latency figures as unverified.'; cb.classList.add('critical'); ct.textContent = 'Calibration failed'; }
+  $('calAgo').textContent = c.age_s == null ? '' : `last run ${Math.round(c.age_s)} s ago`; $('btnTest').disabled = c.status === 'running';
+  $('induced').hidden = !f.induced;
+  const sl = f.slo, t = $('tSlo'), unv = c.status !== 'valid';
+  t.textContent = !sl || sl.met == null ? '—' : unv ? 'Unverified' : sl.met ? 'Met' : 'Breached'; t.style.color = unv && sl && sl.met != null ? 'var(--status-warning)' : sl && sl.met === false ? 'var(--status-critical)' : '';
+  $('tSloS').textContent = sl && sl.p99_ms != null ? `p99 ${sl.p99_ms} ms vs ${sl.target_ms} · ${sl.n} records${unv ? ' · calibration not valid' : ''}` : 'needs data';
+}
+$('btnTest').addEventListener('click', () => { $('btnTest').disabled = true; fetch('/calibrate', { method: 'POST' }).catch(() => {}); });
+function renderDq(f) {
+  const t = $('dq'); t.textContent = ''; const h = t.insertRow(); ['Venue', 'Empty seconds', 'Spread blank', 'Stalled for'].forEach(x => h.append(Object.assign(document.createElement('th'), { textContent: x })));
+  for (const [k, s] of Object.entries(f.series)) { const d = s.dq; if (!d) continue; const r = t.insertRow(); r.insertCell().textContent = k; r.insertCell().textContent = `${d.empty_bins_60} of ${d.bins_60}`;
+    r.insertCell().textContent = d.sentinel_rate_60 == null ? '—' : Math.round(d.sentinel_rate_60 * 100) + '% (no recent trade)'; r.insertCell().textContent = d.stall_s == null ? '—' : d.stall_s.toFixed(1) + ' s'; }
+}
+
 function renderTob(s) {
   const t = $('tob'); t.textContent = ''; const w = s && s.window_1s; if (!w) { t.append(el('div', 'empty', 'Waiting for data…')); return; }
   const mx = Math.max(w.best_bid_qty, w.best_ask_qty) || 1, mk = (cls, label, p, q) => { const d = el('div', 'side ' + cls); const i = document.createElement('i'); i.style.width = (q / mx * 100).toFixed(0) + '%';
@@ -159,17 +224,18 @@ function renderFeeds(f) {
   $('sbConn').innerHTML = ''; for (const [k, s] of Object.entries(f.series)) { const w = s.window_1s; $('sbConn').append(el('span', '', `${k} ${w ? w.n : 0}/s   `)); }
 }
 const ICON = { info: 'ℹ', good: '✓', warning: '▲', serious: '■', critical: '✕' };
-function renderLog() { S.logDirty = false; const l = $('log'); l.textContent = ''; if (!S.log.length) { l.append(el('div', 'empty', 'Nothing has happened yet.')); return; }
-  S.log.slice(0, 12).forEach(e => { const r = el('div', 'le'); r.append(el('span', '', e.t), el('span', 'ic', ICON[e.level]), el('span', '', e.text)); l.append(r); }); }
+function renderLog() { S.logDirty = false; const l = $('log'); l.textContent = '';
+  const all = [...S.log, ...S.srvEv].sort((x, y) => y.t_ms - x.t_ms).slice(0, 14); if (!all.length) { l.append(el('div', 'empty', 'Nothing has happened yet.')); return; }
+  all.forEach(e => { const r = el('div', 'le'); r.append(el('span', '', new Date(e.t_ms).toTimeString().slice(0, 8)), el('span', 'ic', ICON[e.level] || 'ℹ'), el('span', '', e.text)); l.append(r); }); }
 
 // ---------- render loop ----------
 let lastStrip = 0;
 function render() {
   const f = S.frame, t0 = performance.now(); if (!f) { renderChrome({ lag: {}, client: { drops: 0 } }, null, null); return; }
   const s = sel(), w = s && s.window_1s, now = f.ts_ms;
-  renderChrome(f, s, w); drawMid(now); drawObi(now); drawTimeline(now); renderAnat(w); renderTob(s); renderFeeds(f);
+  renderChrome(f, s, w); drawMid(now); drawObi(now); drawTimeline(now); drawAnat(now); renderCal(f); renderDq(f); renderTob(s); renderFeeds(f);
   if (t0 - lastStrip > 900 || !$('strip').children.length) { renderStrip(f); lastStrip = t0; }
-  if (S.logDirty) renderLog();
+  if (S.logDirty || (f.events && f.events.length !== S.lastEv)) { S.lastEv = f.events ? f.events.length : 0; renderLog(); }
   $('sbSeq').textContent = `frame #${f.seq}` + (S.seqGaps ? ` · ${S.seqGaps} missed` : '');
   S.costs.push(performance.now() - t0); if (S.costs.length > 600) S.costs.shift(); S.draws++;
 }

@@ -144,6 +144,9 @@
   .lens-title.e { --rail: #2faa8a; } .lens-title.m { --rail: #6277d6; } .lens-title.o { --rail: #9a9a92; }
 
 /* ---- wired-app additions ---- */
+.banner { margin: 8px 16px 0; padding: 8px 14px; border-radius: 12px; background: rgba(250,178,25,.14); box-shadow: inset 0 0 0 1px rgba(250,178,25,.45); color: #f3d98a; font-size: 12px; position: relative; z-index: 1; }
+.banner[hidden] { display: none; }
+.cal { display: flex; flex-direction: column; gap: 6px; } .cal .head { font-size: 15px; font-weight: 600; } .cal .body { color: var(--ink-secondary); line-height: 1.45; font-size: 12px; }
 .mockbar { display: none; }
 .empty { color: var(--ink-muted); font-size: 12px; padding: 10px 2px; }
 .ph { color: var(--ink-secondary); line-height: 1.5; font-size: 12px; }

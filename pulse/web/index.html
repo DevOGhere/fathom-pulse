@@ -17,15 +17,24 @@
   <span class="badge" id="ageBadge"><span class="dot"></span><span class="num" id="ageText">no data yet</span></span>
   <span class="badge" id="calBadge"><span class="dot"></span><span>Not calibrated · built Day 4</span></span>
 </div>
+<div class="banner" id="induced" hidden>SELF-TEST IN PROGRESS — real data in this window is delayed on purpose (induced). Ignore latency figures until it ends.</div>
 <div class="strip" id="strip" role="group" aria-label="Venues"></div>
 
 <div class="grid">
   <section class="lens"><div class="lens-title e">Engine room</div>
     <div class="col pool engine">
       <div class="card" id="anat">
-        <h3>Anatomy of a Tick <span class="sub">last 1 s · ms</span><button class="chip" data-chip></button></h3>
-        <div class="ph" id="anatBody"><span class="empty">Waiting for data…</span></div>
-        <div class="ph" style="margin-top:8px;color:var(--ink-muted)">The full per-second waterfall, P50/P99 toggle and click-to-pin arrive on Day 4. Stage 3 (<b>Pulse → sent</b>) and the browser segment are not measured yet, so they are not shown.</div>
+        <h3>Anatomy of a Tick <span class="sub">per 1 s bin · ms</span>
+          <div class="seg" id="pctSeg"><button data-p="50" aria-pressed="false">P50</button><button data-p="99" aria-pressed="true">P99</button></div>
+          <button class="chip" data-chip></button></h3>
+        <canvas id="cAnat" data-h="200"></canvas>
+        <div class="legend">
+          <span><i style="background:var(--stage-recv)"></i>1 · producer → derived (Fathom)</span>
+          <span><i style="background:var(--stage-derive)"></i>2 · derived → Pulse consumed</span>
+          <span><i style="background:var(--stage-pulse)"></i>3 · consumed → frame built (includes the ≤100 ms tick wait)</span>
+          <span><i style="background:var(--stage-ws)"></i>4 · sent → your screen (this browser, local estimate)</span>
+        </div>
+        <div class="pin" id="pin">Click a bar to pin one second and read it stage by stage.</div>
       </div>
       <div class="card">
         <h3>Pipeline vitals</h3>
@@ -33,12 +42,14 @@
           <div class="tile"><div class="l">Processor lag</div><div class="v num" id="tLag">—</div><div class="s">msgs behind (fathom-processor)</div></div>
           <div class="tile"><div class="l">Derived rate</div><div class="v num" id="tRate">—</div><div class="s">updates in last 1 s</div></div>
           <div class="tile"><div class="l">Frames dropped</div><div class="v num" id="tDrop">0</div><div class="s">this client; smoothness lost, not state</div></div>
-          <div class="tile"><div class="l">Pulse age</div><div class="v num" id="tAge">—</div><div class="s">ms since newest consume</div></div>
+          <div class="tile"><div class="l">Latency SLO</div><div class="v num" id="tSlo">—</div><div class="s" id="tSloS">p99 recv → frame &lt; 100 ms, 60 s</div></div>
         </div>
       </div>
       <div class="card">
         <h3>Calibration <span class="sub">does Pulse find a delay we hide on purpose?</span></h3>
-        <div class="ph"><b>Not built yet (Day 4).</b> Until it passes, treat every latency figure here as unverified.</div>
+        <div class="cal"><div class="head" id="calHead">Waiting for the first self-test…</div><div class="body" id="calBody"></div>
+        <div class="empty" id="calScope">Scope: this checks Pulse's own stamps and stage maths (stages 2 and 3). Stage 1 belongs to Fathom and is never injected.</div>
+        <div><button class="btn" id="btnTest">Run self-test now</button> <span class="num" style="color:var(--ink-muted);margin-left:8px" id="calAgo"></span></div></div>
       </div>
     </div>
   </section>
@@ -76,6 +87,10 @@
         <h3>Feed health <span class="sub">per venue</span></h3>
         <table class="feeds" id="feeds"></table>
         <div class="empty" style="padding-top:6px">Sequence gaps: n/a. Pulse reads the derived stream and cannot see exchange sequence numbers.</div>
+      </div>
+      <div class="card">
+        <h3>Data quality <span class="sub">last 60 s · per venue</span></h3>
+        <table class="feeds" id="dq"></table>
       </div>
       <div class="card">
         <h3>Event log <span class="sub">this session · newest first</span></h3>

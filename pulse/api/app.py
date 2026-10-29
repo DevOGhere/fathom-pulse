@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -80,7 +81,7 @@ async def stream(ws: WebSocket, throttle_ms: int = 0):
             if client.throttle_s:
                 await asyncio.sleep(client.throttle_s)
             client.sent += 1
-            await ws.send_text(json.dumps({**frame, "client": {"drops": client.drops, "sent": client.sent, "queue_max": 2}},
+            await ws.send_text(json.dumps({**frame, "client": {"drops": client.drops, "sent": client.sent, "queue_max": 2, "sent_ms": time.time_ns() / 1e6}},
                                           separators=(",", ":")))
 
     task = asyncio.create_task(sender())

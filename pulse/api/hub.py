@@ -40,6 +40,7 @@ class Hub:
         self.calibrator = Calibrator(self)
         self.events: list[dict] = []          # server-side event log (self-tests etc.), newest first
         self._inject3_s = 0.0
+        self.inj3_actual_ms: list[float] = []
         self._inject_stage: Optional[int] = None
         self._tasks: list[asyncio.Task] = []
 
@@ -65,6 +66,11 @@ class Hub:
     def remove_client(self, c: Client) -> None:
         self.clients.discard(c)
 
+    def _release3(self, r: DerivedRec) -> None:
+        # ground truth for the stage-3 test: how long after its consume stamp the record REALLY entered the pipeline
+        self.inj3_actual_ms.append((time.monotonic_ns() - r.consume_mono_ns) / 1e6)
+        self.agg.add_derived(r)
+
     # ---- calibration hooks ----
     def inject(self, stage: Optional[int], d_ms: float) -> None:
         self._inject_stage = stage
@@ -76,11 +82,12 @@ class Hub:
         return {"stage": self._inject_stage} if self._inject_stage else None
 
     def consumer_inject_reset(self) -> None:
+        self.inj3_actual_ms.clear()
         if self._ic:
             self._ic.inj_actual_ms.clear()
 
-    def consumer_inject_mean(self) -> Optional[float]:
-        v = list(self._ic.inj_actual_ms) if self._ic else []
+    def consumer_inject_mean(self, stage: int = 2) -> Optional[float]:
+        v = list(self.inj3_actual_ms) if stage == 3 else (list(self._ic.inj_actual_ms) if self._ic else [])
         return sum(v) / len(v) if v else None
 
     def log_event(self, level: str, text: str) -> None:
@@ -103,7 +110,7 @@ class Hub:
                         # NOT loop.call_at(): uvicorn[standard] runs uvloop, whose clock base differs from time.monotonic(),
                         # so an absolute time fired immediately and the delay silently vanished (caught by the self-test).
                         due_in = (r.consume_mono_ns + int(self._inject3_s * 1e9) - time.monotonic_ns()) / 1e9
-                        loop.call_later(max(0.0, due_in), self.agg.add_derived, r._replace(induced=True))
+                        loop.call_later(max(0.0, due_in), self._release3, r._replace(induced=True))
                     else:
                         self.agg.add_derived(r)
                 elif isinstance(r, TradeRec):

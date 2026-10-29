@@ -80,7 +80,7 @@ class Calibrator:
             self.hub.inject(stage, d_ms)
             await asyncio.sleep(WINDOW_S + 0.8)
             self.hub.inject(None, 0)
-            truth = d_ms if stage == 3 else self.hub.consumer_inject_mean()
+            truth = self.hub.consumer_inject_mean(stage)       # ACTUAL injected delay (measured), not the nominal D
             await asyncio.sleep(0.6)                       # let held messages and pending stage-3 stamps flush
             test = self._gather(t1 + int(0.8 * ns), t1 + int((WINDOW_S + 0.8) * ns), induced=True)
             real = judge(base, test, expected=stage, truth_ms=truth or d_ms)
