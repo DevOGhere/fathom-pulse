@@ -8,8 +8,9 @@
   `databento.es` topics and create symbols that never tick.
 - Raw topics carry snapshots and deltas too: the message-index header is peeked and everything that is not a
   Trade (index 0) is skipped BEFORE ParseFromString. Book reconstruction is out of scope (red-team 5.2).
-- Stamps: one monotonic + one wall stamp per poll batch, taken right after Kafka returns it. A message's
-  `consume` time therefore has batch resolution (<= the 50 ms consume timeout). That is stated, not hidden.
+- Stamps: one monotonic + one wall stamp PER MESSAGE, taken in the unbatching loop (measured in review, 2026-10-29: ~30 ns per call).
+  Batch-level stamps had <=50 ms quantisation, which is as large as stage 2 itself. Residual limit: a message that
+  sat in librdkafka's queue before consume() returned it is stamped at unbatch time, not at network arrival.
 - Kafka timestamp = CreateTime = producer enqueue, NOT broker append (cluster is CreateTime; verified Day 0).
 - effective_spread == 0.0 is the upstream "no recent trade" sentinel -> None here, at decode time.
 """
@@ -109,9 +110,9 @@ class IngestConsumer:
                     last_sample = time.monotonic()
                 if not msgs:
                     continue
-                mono, wall = time.monotonic_ns(), time.time_ns()     # one stamp pair for the whole batch
                 batch = []
                 for m in msgs:
+                    mono, wall = time.monotonic_ns(), time.time_ns()     # per-message stamp pair
                     err = m.error()
                     if err:
                         if err.code() != KafkaError._PARTITION_EOF:
