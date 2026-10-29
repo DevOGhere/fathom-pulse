@@ -9,14 +9,16 @@
 - Raw topics carry snapshots and deltas too: the message-index header is peeked and everything that is not a
   Trade (index 0) is skipped BEFORE ParseFromString. Book reconstruction is out of scope (red-team 5.2).
 - Stamps: one monotonic + one wall stamp PER MESSAGE, taken in the unbatching loop (measured in review, 2026-10-29: ~30 ns per call).
-  Batch-level stamps had <=50 ms quantisation, which is as large as stage 2 itself. Residual limit: a message that
-  sat in librdkafka's queue before consume() returned it is stamped at unbatch time, not at network arrival.
+  consume() timeout is 5 ms: it blocks for the whole timeout to fill a batch, so the old 50 ms added ~25 ms of Pulse-made
+  wait to stage 2. Residual limit: a message that sat in librdkafka's queue before consume() returned it is stamped at
+  unbatch time, not at network arrival (<= 5 ms).
 - Kafka timestamp = CreateTime = producer enqueue, NOT broker append (cluster is CreateTime; verified Day 0).
 - effective_spread == 0.0 is the upstream "no recent trade" sentinel -> None here, at decode time.
 """
 from __future__ import annotations
 
 import asyncio
+import heapq
 import os
 import threading
 import time
@@ -81,6 +83,8 @@ class IngestConsumer:
         self.queue_drops = 0
         self.sample_derived: Optional[md.DerivedFeatures] = None
         self.bridge = ClockBridge()
+        self._inject2_ns = 0
+        self.inj_actual_ms: list[float] = []          # ground-truth injected delay per released message (stage-2 tests)
 
     def start(self) -> None:
         self._thread = threading.Thread(target=self._run, name="pulse-ingest-poll", daemon=True)
@@ -98,38 +102,60 @@ class IngestConsumer:
         except asyncio.QueueFull:
             self.queue_drops += len(batch)
 
+    # ---- calibration hook (stage 2): hold each message and take its consume stamp D later. The stamp is genuinely D
+    # later, so the production stage-2 maths sees a real delay. Real data is delayed too; the window is labelled `induced`.
+    def set_inject2(self, delay_ms: float) -> None:
+        self._inject2_ns = int(delay_ms * 1e6)
+
     def _run(self) -> None:
         c = Consumer(self._conf)
         c.subscribe(TOPICS)
         last_sample = time.monotonic()
+        held: list = []                                   # heap of (due_mono_ns, seq, msg, arrival_mono_ns)
+        seq = 0
         try:
             while not self._stop.is_set():
-                msgs = c.consume(num_messages=500, timeout=0.05)
+                # consume() blocks for the FULL timeout to fill a batch, so a 50 ms timeout added ~25 ms of Pulse-made wait to stage 2.
+                # 5 ms, constant (also while injecting, so a test never changes the natural component it is compared against).
+                msgs = c.consume(num_messages=500, timeout=0.005)
                 if time.monotonic() - last_sample > 5:
                     self.bridge.sample()
                     last_sample = time.monotonic()
-                if not msgs:
-                    continue
+                d = self._inject2_ns
+                arrival = time.monotonic_ns()
                 batch = []
                 for m in msgs:
-                    mono, wall = time.monotonic_ns(), time.time_ns()     # per-message stamp pair
-                    err = m.error()
-                    if err:
-                        if err.code() != KafkaError._PARTITION_EOF:
-                            self.errors[str(err.code())] += 1
-                        continue
-                    topic = m.topic()
-                    self.counts[topic] += 1
-                    rec = self._decode(topic, m.value(), m.timestamp()[1], mono, wall)
-                    if rec is not None:
-                        self.decoded[topic] += 1
-                        batch.append(rec)
+                    if d and m.topic().startswith("market.derived."):
+                        seq += 1
+                        heapq.heappush(held, (arrival + d, seq, m, arrival))
+                    else:
+                        self._handle(m, batch, False)
+                now = time.monotonic_ns()
+                while held and held[0][0] <= now:
+                    _, _, m, arr = heapq.heappop(held)
+                    self._handle(m, batch, True, arr)
                 if batch:
                     self._loop.call_soon_threadsafe(self._enqueue, batch)
         finally:
             c.close()
 
-    def _decode(self, topic: str, value: bytes, kafka_ts_ms: int, mono: int, wall: int):
+    def _handle(self, m, batch: list, induced: bool, arrival_mono_ns: int = 0) -> None:
+        mono, wall = time.monotonic_ns(), time.time_ns()     # per-message stamp pair, taken here (review recommendation)
+        err = m.error()
+        if err:
+            if err.code() != KafkaError._PARTITION_EOF:
+                self.errors[str(err.code())] += 1
+            return
+        topic = m.topic()
+        self.counts[topic] += 1
+        rec = self._decode(topic, m.value(), m.timestamp()[1], mono, wall, induced)
+        if rec is not None:
+            self.decoded[topic] += 1
+            if induced and arrival_mono_ns:
+                self.inj_actual_ms.append((mono - arrival_mono_ns) / 1e6)     # ground truth: how long we REALLY held it
+            batch.append(rec)
+
+    def _decode(self, topic: str, value: bytes, kafka_ts_ms: int, mono: int, wall: int, induced: bool = False):
         try:
             idx = wire.peek_index(value)
             if topic.startswith("market.derived."):
@@ -140,7 +166,7 @@ class IngestConsumer:
                     self.sample_derived = d
                 eff = d.effective_spread if d.effective_spread != 0.0 else None   # sentinel -> None
                 return DerivedRec(d.venue, d.symbol, d.derived_at_ns, d.recv_ts_ns, mono, wall, kafka_ts_ms,
-                                  d.mid_price, d.microprice, d.obi_top1, d.obi_top5, eff, d.best_bid, d.best_ask, d.best_bid_qty, d.best_ask_qty)
+                                  d.mid_price, d.microprice, d.obi_top1, d.obi_top5, eff, d.best_bid, d.best_ask, d.best_bid_qty, d.best_ask_qty, induced)
             if idx != _IDX_TRADE:        # book snapshots/deltas: skipped before parsing
                 return None
             t = wire.decode(value)

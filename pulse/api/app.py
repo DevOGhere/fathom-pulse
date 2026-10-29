@@ -52,6 +52,17 @@ async def get_stats():
     return _debug_stats
 
 
+@app.post("/calibrate")
+async def calibrate(stage: int = 0):
+    """Run one self-test now (stage 2 or 3; 0 = random). Blocks ~11 s, returns the outcome record."""
+    return await hub.calibrator.run_once(stage or None)
+
+
+@app.get("/calibration")
+async def calibration():
+    return hub.calibrator.snapshot()
+
+
 @app.get("/health")
 async def health():
     return {"seq": hub.seq, "clients": len(hub.clients), "ingest": hub.ingest_stats(),

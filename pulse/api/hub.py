@@ -10,6 +10,7 @@ import asyncio
 import time
 from typing import Optional
 
+from pulse.api.calibration import Calibrator
 from pulse.api.frames import build_frame
 from pulse.ingest.consumer import IngestConsumer
 from pulse.ingest.lag import LagMonitor
@@ -36,6 +37,10 @@ class Hub:
         self._queue: asyncio.Queue = asyncio.Queue(maxsize=1000)
         self._ic: Optional[IngestConsumer] = None
         self._lag = LagMonitor()
+        self.calibrator = Calibrator(self)
+        self.events: list[dict] = []          # server-side event log (self-tests etc.), newest first
+        self._inject3_s = 0.0
+        self._inject_stage: Optional[int] = None
         self._tasks: list[asyncio.Task] = []
 
     async def start(self) -> None:
@@ -43,7 +48,7 @@ class Hub:
         self._ic = IngestConsumer(loop, self._queue)
         self._ic.start()
         self._lag.start()
-        self._tasks = [asyncio.create_task(self._pump()), asyncio.create_task(self._closer()), asyncio.create_task(self._ticker())]
+        self._tasks = [asyncio.create_task(self._pump()), asyncio.create_task(self._closer()), asyncio.create_task(self._ticker()), asyncio.create_task(self.calibrator.loop())]
 
     async def stop(self) -> None:
         for t in self._tasks:
@@ -60,6 +65,28 @@ class Hub:
     def remove_client(self, c: Client) -> None:
         self.clients.discard(c)
 
+    # ---- calibration hooks ----
+    def inject(self, stage: Optional[int], d_ms: float) -> None:
+        self._inject_stage = stage
+        self._inject3_s = d_ms / 1000 if stage == 3 else 0.0
+        if self._ic:
+            self._ic.set_inject2(d_ms if stage == 2 else 0.0)
+
+    def injecting(self) -> Optional[dict]:
+        return {"stage": self._inject_stage} if self._inject_stage else None
+
+    def consumer_inject_reset(self) -> None:
+        if self._ic:
+            self._ic.inj_actual_ms.clear()
+
+    def consumer_inject_mean(self) -> Optional[float]:
+        v = list(self._ic.inj_actual_ms) if self._ic else []
+        return sum(v) / len(v) if v else None
+
+    def log_event(self, level: str, text: str) -> None:
+        self.events.insert(0, {"t_ms": int(time.time() * 1000), "level": level, "text": text})
+        del self.events[40:]
+
     def ingest_stats(self) -> dict:
         ic = self._ic
         return {"queue_drops": ic.queue_drops if ic else 0, "late": self.agg.late,
@@ -69,9 +96,16 @@ class Hub:
 
     async def _pump(self) -> None:
         while True:
+            loop = asyncio.get_running_loop()
             for r in await self._queue.get():
                 if isinstance(r, DerivedRec):
-                    self.agg.add_derived(r)
+                    if self._inject3_s:           # stage-3 injection: release D after the consume STAMP (not D after now: no compounding)
+                        # NOT loop.call_at(): uvicorn[standard] runs uvloop, whose clock base differs from time.monotonic(),
+                        # so an absolute time fired immediately and the delay silently vanished (caught by the self-test).
+                        due_in = (r.consume_mono_ns + int(self._inject3_s * 1e9) - time.monotonic_ns()) / 1e9
+                        loop.call_later(max(0.0, due_in), self.agg.add_derived, r._replace(induced=True))
+                    else:
+                        self.agg.add_derived(r)
                 elif isinstance(r, TradeRec):
                     self.agg.add_trade(r)
 
@@ -88,8 +122,9 @@ class Hub:
             nxt += TICK_S                         # absolute deadlines: no drift, a slow tick does not shift the grid
             try:
                 self.seq += 1
+                self.agg.record_stage3(time.monotonic_ns())      # stage 3 = consume -> THIS frame build
                 frame = build_frame(self.agg, self.seq, time.time_ns(), self._ic.bridge.mono_to_wall_ns,
-                                    self._lag.get_lag(), self.ingest_stats())
+                                    self._lag.get_lag(), self.ingest_stats(), self.calibrator.snapshot(), self.events[:12])
                 for c in self.clients:
                     if c.queue.full():
                         try:

@@ -28,6 +28,7 @@ BIN_GRACE_NS = 250_000_000
 BIN_RING_CAP = 300       # 5 minutes of closed 1s bins per key
 RAW_RING_CAP = 20_000    # recent derived records per key (~47/s total, so well over 5 min)
 VOL_WINDOW = 60
+STAGE_RING_CAP = 6000    # per-record stage samples kept per key (~5 min at 20/s)
 TRADE_TAIL_CAP = 50      # recent trades kept per key for the time-and-sales tail
 
 
@@ -48,6 +49,7 @@ class DerivedRec(NamedTuple):
     best_ask: float
     best_bid_qty: float = 0.0
     best_ask_qty: float = 0.0
+    induced: bool = False        # True while a calibration delay is being injected at a Pulse stamp site
 
 
 class TradeRec(NamedTuple):
@@ -77,6 +79,8 @@ class Bin:
     trade_count_1s: int
     avg_trade_size_60s: Optional[float]
     realized_vol_60s: Optional[float]
+    stages: Optional[dict] = None      # per-bin stage p50/p99 (ms): s1 recv->derived, s2 derived->consume, s3 consume->frame build, tot
+    induced: bool = False              # a calibration delay was injected during this second; excluded from SLO/histograms
 
     @property
     def empty(self) -> bool:
@@ -90,17 +94,23 @@ class Bin:
 
 
 class _Accum:
-    __slots__ = ("n", "mid", "micro", "obi1", "obi5", "bid", "ask", "eff", "n_trades", "trade_qty")
+    __slots__ = ("n", "mid", "micro", "obi1", "obi5", "bid", "ask", "eff", "n_trades", "trade_qty", "s1", "s2", "s3", "tot", "induced", "neg")
 
     def __init__(self) -> None:
         self.n = 0
         self.mid = self.micro = self.obi1 = self.obi5 = self.bid = self.ask = self.eff = None
         self.n_trades = 0
         self.trade_qty = 0.0
+        self.s1: list[float] = []
+        self.s2: list[float] = []
+        self.s3: list[float] = []
+        self.tot: list[float] = []
+        self.induced = False
+        self.neg = 0
 
 
 class _Key:
-    __slots__ = ("next_sec", "open", "bins", "raw", "win", "trades")
+    __slots__ = ("next_sec", "open", "bins", "raw", "win", "trades", "stages", "pending")
 
     def __init__(self, bin_cap: int, raw_cap: int) -> None:
         self.next_sec: Optional[int] = None
@@ -110,6 +120,8 @@ class _Key:
         # trailing window of (close_mid_or_None, trade_count, trade_qty) per closed bin
         self.win: deque[tuple] = deque(maxlen=VOL_WINDOW)
         self.trades: deque[TradeRec] = deque(maxlen=TRADE_TAIL_CAP)
+        self.stages: deque[list] = deque(maxlen=STAGE_RING_CAP)   # [consume_wall_ns, s1, s2, s3|None, induced]
+        self.pending: list = []                                    # (entry, consume_mono_ns, second) awaiting frame-build stamp
 
 
 class Aggregator:
@@ -144,7 +156,36 @@ class Aggregator:
         if r.effective_spread is not None:      # never fold the sentinel into anything
             a.eff = r.effective_spread
         k.raw.append(r)
+        s1 = (r.derived_at_ns - r.recv_ts_ns) / 1e6        # producer recv -> processor derived   (both host monotonic)
+        s2 = (r.consume_mono_ns - r.derived_at_ns) / 1e6   # processor derived -> Pulse consumed  (both host monotonic)
+        a.s1.append(s1)
+        a.s2.append(s2)
+        a.neg += (s1 < 0) + (s2 < 0)
+        a.induced = a.induced or r.induced
+        entry = [r.consume_wall_ns, s1, s2, None, r.induced]
+        k.stages.append(entry)
+        k.pending.append((entry, r.consume_mono_ns, r.consume_wall_ns // NS))
         return True
+
+    def record_stage3(self, build_mono_ns: int) -> None:
+        """Stage 3 = consume -> the 10Hz frame build that first includes the record. Called by the ticker right before it builds."""
+        for k in self._keys.values():
+            for entry, cmono, sec in k.pending:
+                s3 = (build_mono_ns - cmono) / 1e6
+                entry[3] = s3
+                a = k.open.get(sec)
+                if a is not None:
+                    a.s3.append(s3)
+                    a.tot.append(entry[1] + entry[2] + s3)
+                    a.neg += s3 < 0
+            k.pending.clear()
+
+    def stage_samples(self, venue: str, symbol: str, since_wall_ns: int, until_wall_ns: Optional[int] = None) -> list[list]:
+        """Complete per-record samples (stage 3 known), oldest first. Entries: [wall_ns, s1, s2, s3, induced]."""
+        k = self._keys.get((venue, symbol))
+        if not k:
+            return []
+        return [e for e in k.stages if e[3] is not None and e[0] >= since_wall_ns and (until_wall_ns is None or e[0] < until_wall_ns)]
 
     def add_trade(self, r: TradeRec) -> bool:
         k = self._key(r.venue, r.symbol)
@@ -174,11 +215,23 @@ class Aggregator:
                     effective_spread=a.eff if a else None,
                     trade_count_1s=a.n_trades if a else 0,
                     avg_trade_size_60s=self._avg_trade(k), realized_vol_60s=self._vol(k),
+                    stages=self._stage_stats(a), induced=bool(a and a.induced),
                 )
                 k.bins.append(b)
                 out.append(b)
                 k.next_sec = sec + 1
         return out
+
+    @staticmethod
+    def _stage_stats(a: Optional[_Accum]) -> Optional[dict]:
+        if a is None or not a.s1:
+            return None
+        def st(v):
+            if not v:
+                return {"p50": None, "p99": None}
+            q = sorted(v)
+            return {"p50": round(q[len(q) // 2], 3), "p99": round(q[min(len(q) - 1, int(0.99 * len(q)))], 3)}
+        return {"s1": st(a.s1), "s2": st(a.s2), "s3": st(a.s3), "tot": st(a.tot), "neg": a.neg, "n": len(a.s1)}
 
     @staticmethod
     def _vol(k: _Key) -> Optional[float]:

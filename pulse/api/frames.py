@@ -17,6 +17,7 @@ from pulse.ingest.rings import NS, Aggregator
 SCHEMA_VERSION = 1
 HIST_BINS = 60
 TRADES_IN_FRAME = 12
+SLO_TARGET_MS = 100.0     # p99 of per-record recv -> frame-build total over 60 s
 
 
 def _pct(vals: list[float], p: float) -> Optional[float]:
@@ -30,7 +31,8 @@ def _stage(vals: list[float]) -> dict:
     return {"p50": _pct(vals, 50), "p99": _pct(vals, 99)}
 
 
-def build_frame(agg: Aggregator, seq: int, now_wall_ns: int, mono_to_wall, lag: dict, ingest: dict) -> dict:
+def build_frame(agg: Aggregator, seq: int, now_wall_ns: int, mono_to_wall, lag: dict, ingest: dict,
+                calibration: Optional[dict] = None, events: Optional[list] = None) -> dict:
     """`mono_to_wall` is ClockBridge.mono_to_wall_ns (injected so this stays a pure function)."""
     series: dict = {}
     newest_consume = None
@@ -71,10 +73,24 @@ def build_frame(agg: Aggregator, seq: int, now_wall_ns: int, mono_to_wall, lag: 
                 "trade_count_1s": [b.trade_count_1s for b in bins],
                 "realized_vol_60s": bins[-1].realized_vol_60s,
                 "avg_trade_size_60s": bins[-1].avg_trade_size_60s,
+                "stages": {k2: [None if b.stages is None else b.stages[k1][pp] for b in bins]
+                           for k1, k2, pp in [("s1", "s1_p50", "p50"), ("s1", "s1_p99", "p99"), ("s2", "s2_p50", "p50"), ("s2", "s2_p99", "p99"),
+                                              ("s3", "s3_p50", "p50"), ("s3", "s3_p99", "p99"), ("tot", "tot_p50", "p50"), ("tot", "tot_p99", "p99")]},
+                "induced": [b.induced for b in bins],
             }
+            ne = [b for b in bins if not b.empty]
+            entry["dq"] = {"empty_bins_60": sum(1 for b in bins if b.empty), "bins_60": len(bins),
+                           "sentinel_rate_60": None if not ne else round(sum(1 for b in ne if b.effective_spread is None) / len(ne), 3),
+                           "stall_s": None if not win and not bins else round(max(0.0, (now_wall_ns - (win[-1].consume_wall_ns if win else (bins[-1].close_ts_ms * 1_000_000))) / 1e9), 2)}
         series[f"{venue}/{symbol}"] = entry
+    # SLO from per-RECORD totals (recv -> frame build), not a sum of per-stage p99s; induced seconds excluded
+    tots = sorted(e[1] + e[2] + e[3] for v, sy in agg.keys() for e in agg.stage_samples(v, sy, now_wall_ns - 60 * NS) if not e[4])
+    slo = {"target_ms": SLO_TARGET_MS, "window_s": 60, "n": len(tots),
+           "p99_ms": round(tots[min(len(tots) - 1, int(0.99 * len(tots)))], 2) if tots else None,
+           "met": None if not tots else tots[min(len(tots) - 1, int(0.99 * len(tots)))] < SLO_TARGET_MS}
     return {
         "v": SCHEMA_VERSION, "seq": seq, "ts_ms": now_wall_ns // 1_000_000,
         "pulse_age_ms": None if newest_consume is None else round((now_wall_ns - newest_consume) / 1e6, 2),
-        "lag": lag, "ingest": ingest, "series": series,
+        "lag": lag, "ingest": ingest, "series": series, "slo": slo,
+        "calibration": calibration, "events": events or [], "induced": bool(calibration and calibration.get("injecting")),
     }
