@@ -167,7 +167,12 @@ class Detector:
             self._prev_lag = o.lag
             climbing = self._rises >= CLIMB_RISES and o.lag >= 150 and len(h4) >= CLIMB_N and o.lag - h4[-CLIMB_N] >= 120
             key = ("lag_spike", None)
-            if key not in self.open and (self._lag_run >= LAG_SECONDS or climbing):
+            # Lag is measured from COMMITTED offsets and the processor commits in batches, so on a healthy system it saw-tooths from 0 to ~300 with no real
+            # delay (10 false lag_spikes in 17 min, 2026-11-02). A backlog only counts when its effect shows: a stall is open, or the pipeline latency itself rose.
+            lat_base = list(self.lats)[:-5]
+            lat_med = _robust(lat_base)[0] if len(lat_base) >= 30 else None
+            felt = any(k[0] == "stall" for k in self.open) or (o.lat_ms is not None and lat_med is not None and o.lat_ms > max(lat_med + 40, 2.5 * lat_med))
+            if key not in self.open and felt and (self._lag_run >= LAG_SECONDS or climbing):
                 self._start("lag_spike", None, o, "serious", "Fathom's processor is falling behind: messages are queueing between the broker and the processor, so every number downstream gets older. Pulse is reading the same stream and sees the delay too.", {"lag": o.lag, "threshold": round(thr)})
             elif key in self.open:
                 self.open[key].evidence["peak_lag"] = max(self.open[key].evidence.get("peak_lag", 0), o.lag)

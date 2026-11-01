@@ -286,7 +286,8 @@ function renderLog() { S.logDirty = false; const l = $('log'); l.textContent = '
 let lastStrip = 0;
 // ---------- Ops dashboard: the same frames, 1 Hz, calmer encodings (area, heat strips, zoned band chart). See ops.js + docs/UX.md ----------
 const OM = { mode: (RQ.get('mode') || localStorage.getItem('pulse.mode') || 'detail') === 'ops' ? 'ops' : 'detail', sec: -1, holds: {}, ema: { speed: new OPS.Ema(0.2), lag: new OPS.Ema(0.3) }, view: null, E: null, tips: {}, openInc: new Set(), draw: {}, hov: {}, cross: null };
-const ICON_SEV = { good: '✔', warning: '▲', serious: '■', critical: '✕' };
+const ICON_SEV = { good: '●', warning: '▲', serious: '■', critical: '✕' };       // the same shapes Detail's chips use: shape + colour + word, never colour alone
+const RISK = { good: 0, warning: 1, serious: 2, critical: 3 }, RISK_LBL = ['Calm', 'Watch', 'Degraded', 'Down'];
 const SEVC = { good: css('--status-good'), warning: css('--status-warning'), serious: css('--status-serious'), critical: css('--status-critical') };
 const el2 = el;
 function hold(key, name, v) { const h = OM.holds[key] || (OM.holds[key] = new OPS.Hold()), b = OPS.band(name, h.push(OPS.bandIndex(name, v))); b.settling = h.cand !== null; return b; }   // settling: the raw value already points elsewhere; the label waits for a few steady seconds
@@ -431,7 +432,12 @@ function renderOps(f) {
   const sec = Math.floor(f.ts_ms / 1000); if (sec === OM.sec && OM.view) return; OM.sec = sec; opsSample(f);
   const v = OM.view, H = v.head, X = OPS.EXPLAIN, c = f.calibration || {}, E = OM.E;
   const parts = [...Object.entries(v.venues).map(([k, x]) => `${OPS.VN(k)}: ${x.fresh.word}` + (x.rate ? `, updates ${x.rate.word.toLowerCase()}` : '')), v.speed ? `Speed: ${v.speed.word}` : null, v.backlog ? `Backlog: ${v.backlog.word}` : null, `Trust: ${v.trust.word}`, v.inc.some(i => i.end_ms == null && !i.induced) ? 'Open incident: yes' : 'Open incidents: none'].filter(Boolean);
-  const hero = $('opsHero'); hero.dataset.sev = H.sev; $('opsHead').textContent = `${ICON_SEV[H.sev]} ${H.word}`; $('opsSub').textContent = H.sub + (v.trust.word !== 'Verified' && H.word === 'All good' ? ` Timing is ${v.trust.word.toLowerCase()}.` : ''); tipped(hero, 'head', X.head(parts));
+  const hero = $('opsHero'); hero.dataset.sev = H.sev; const sub = H.sub + (v.trust.word !== 'Verified' && H.word === 'All good' ? ` Timing is ${v.trust.word.toLowerCase()}.` : ''), lvl = RISK[H.sev];
+  hero.textContent = '';
+  const txt = el2('div', 'rk-text'); txt.append(el2('div', 'hl', H.word), el2('div', 'hs', sub));
+  const mt0 = el2('div', 'rk-meter'), bar = el2('div', 'rk-bar'), lb = el2('div', 'rk-lbl'); ['good', 'warning', 'serious', 'critical'].forEach((sv, i) => { const sg = el2('i', i <= lvl ? 'on' : ''); sg.dataset.sev = sv; if (i === lvl) sg.append(el2('b', 'rk-pin')); bar.append(sg); const t = el2('span', i === lvl ? 'cur' : '', RISK_LBL[i]); lb.append(t); });
+  mt0.append(el2('div', 'rk-cap', 'Risk'), bar, lb); hero.append(txt, mt0);
+  tipped(hero, 'head', X.head(parts));
   const worst = Object.entries(v.venues).sort((a, b) => b[1].fresh.i - a[1].fresh.i || b[1].age - a[1].age)[0], K = $('opsMeters'); K.textContent = '';
   K.append(tile('Speed', 'speed', v.speed, v.speedMs == null ? '' : `${OPS.roundTo(v.speedMs, 10)} ms`, 'slowest 1 in 100, last minute', 'speed', v.speed ? X.speed(v.speed, v.speedMs) : null),
     tile('Backlog', 'backlog', v.backlog, v.lagN == null ? '' : `${OPS.roundTo(v.lagN, 10)}`, 'messages waiting for the processor', 'backlog', v.backlog ? X.backlog(v.backlog, v.lagN) : null),

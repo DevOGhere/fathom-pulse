@@ -222,3 +222,12 @@
   ::view-transition-new(root) { animation: vt-in .42s cubic-bezier(.2, .7, .2, 1) both; }
   ::view-transition-group(topbar), ::view-transition-group(foot) { animation-duration: 0s; }
   @media (prefers-reduced-motion: reduce) { ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; } }
+
+  /* ---- Ops headline as a risk meter (4 steps: Calm, Watch, Degraded, Down) ---- */
+  .ops .hero { display: flex; align-items: center; justify-content: space-between; gap: 28px; flex-wrap: wrap; padding: 16px 24px; border-left: 0; }
+  .ops .rk-text { min-width: 0; } .ops .hero .hl { font-size: 30px; font-weight: 700; letter-spacing: -.015em; line-height: 1.1; } .ops .hero .hs { color: var(--ink-secondary); font-size: 14px; margin-top: 4px; }
+  .ops .rk-meter { width: min(320px, 100%); } .ops .rk-cap { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: 8px; }
+  .ops .rk-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; } .ops .rk-bar i { position: relative; height: 10px; border-radius: 5px; background: rgba(255,255,255,.09); transition: background .6s; }
+  .ops .rk-bar i.on[data-sev="good"] { background: var(--status-good); } .ops .rk-bar i.on[data-sev="warning"] { background: var(--status-warning); } .ops .rk-bar i.on[data-sev="serious"] { background: var(--status-serious); } .ops .rk-bar i.on[data-sev="critical"] { background: var(--status-critical); }
+  .ops .rk-pin { position: absolute; left: 50%; top: -9px; width: 0; height: 0; transform: translateX(-50%); border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 7px solid var(--ink-primary); }
+  .ops .rk-lbl { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 6px; font-size: 11px; color: var(--ink-muted); text-align: center; } .ops .rk-lbl .cur { color: var(--ink-primary); font-weight: 650; }

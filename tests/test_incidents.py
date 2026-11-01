@@ -64,7 +64,7 @@ def test_lag_spike_needs_three_seconds_in_a_row():
     run(d, 60)
     run(d, 2, lag=900, t0=60); run(d, 1, lag=5, t0=62)
     assert ("lag_spike", None) not in kinds(d)
-    run(d, 4, lag=900, t0=63)
+    run(d, 4, lag=900, age_a=5, t0=63)                         # the backlog is FELT: the derived stream stalled with it
     assert ("lag_spike", None) in kinds(d)
 
 
@@ -160,7 +160,7 @@ def test_a_sustained_lag_climb_opens_lag_spike_but_one_burst_does_not():
     d2 = Detector()
     run(d2, 60)
     for k, lg in enumerate([5, 5, 78, 78, 190, 190, 300, 300]):  # steady climb, polled every 2 s (values repeat)
-        run(d2, 1, lag=lg, t0=60 + k)
+        run(d2, 1, lag=lg, age_a=(5 if k >= 3 else 0.1), t0=60 + k)
     assert ("lag_spike", None) in kinds(d2), kinds(d2)
 
 
@@ -180,4 +180,13 @@ def test_ordinary_lag_wobble_below_the_climb_signature_is_not_a_lag_spike():
     run(d, 60)
     for k, lg in enumerate([20, 20, 90, 90, 146, 146, 120, 120, 160, 160, 130, 130, 190, 190, 140, 140]):
         run(d, 1, lag=lg, t0=60 + k)
+    assert ("lag_spike", None) not in kinds(d), kinds(d)
+
+
+def test_a_big_backlog_that_nobody_feels_is_not_a_lag_spike():
+    # committed-offset lag saw-tooths on a healthy system: 900 msgs behind while records keep flowing and latency is normal = not an incident
+    d = Detector()
+    run_lat(d, 60, 20.0, 0)
+    for k in range(8):
+        d.update(Obs((60 + k) * 1000, {A: {"rate": 10, "age_s": 0.1}, B: {"rate": 16, "age_s": 0.1}}, 900, lat_ms=20.0))
     assert ("lag_spike", None) not in kinds(d), kinds(d)
