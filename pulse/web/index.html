@@ -13,6 +13,8 @@
 <div class="top">
   <span class="brand">FathomPulse</span>
   <span class="spacer"></span>
+  <label class="mode" title="Detail: every measurement, 10 times a second. Ops: calm categories, once a second."><span id="mDetail">Detail</span>
+    <input type="range" id="modeSlider" min="0" max="1" step="1" value="0" aria-label="View mode: Detail or Ops"><span id="mOps">Ops</span></label>
   <span class="badge" id="connBadge"><span class="dot"></span><span id="connText">Connecting…</span></span>
   <span class="badge" id="ageBadge"><span class="dot"></span><span class="num" id="ageText">no data yet</span></span>
   <span class="badge" id="calBadge"><span class="dot"></span><span>Not calibrated · built Day 4</span></span>
@@ -20,7 +22,15 @@
 <div class="banner" id="induced" hidden>SELF-TEST IN PROGRESS — real data in this window is delayed on purpose (induced). Ignore latency figures until it ends.</div>
 <div class="strip" id="strip" role="group" aria-label="Venues"></div>
 
-<div class="grid">
+<main class="ops" id="ops" hidden aria-live="off">
+  <section class="hero card" id="opsHero"><div class="hl" id="opsHead">Waiting for data…</div><div class="hs" id="opsSub"></div></section>
+  <div class="vcards" id="opsVenues"></div>
+  <section class="card"><h3>Pipeline <span class="sub">last minute</span></h3><div class="meters" id="opsMeters"></div></section>
+  <section class="card"><h3>Incidents <span class="sub">newest first</span></h3><div class="incs" id="opsIncs"></div></section>
+  <p class="opsnote">Ops view rounds and smooths: labels change only after a few steady seconds, numbers update once a second. Hover any figure for the exact value, or slide to Detail for every millisecond.</p>
+</main>
+
+<div class="grid" id="detail">
   <section class="lens"><div class="lens-title e">Engine room</div>
     <div class="col pool engine">
       <div class="card" id="anat">
@@ -119,6 +129,7 @@
 
 <div id="tip"></div>
 <div class="statusbar"><span class="num" id="sbClock"></span><span id="sbConn"></span><span class="num" id="sbSeq"></span><span class="num" id="sbMeter"></span><span class="sp"></span><span>LIVE · host-side Pulse · Fathom read-only</span></div>
+<script src="/static/ops.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

@@ -62,3 +62,12 @@ Evaluated once a second on measured data; frames carry `incidents` (last 12 clos
 - **Cause text says only what is measured.** Silent feed + no processor backlog => "upstream of Fathom's processor (exchange feed, network or producer)", and whether one feed or both went quiet. With a backlog it says the cause is not clear from Pulse's side. It never names an exchange or a machine.
 - **Induced demo**: `POST /incident/induce?seconds=N` (3-30) drops every record at ingest. Incidents overlapping it are labelled **induced**; the gate (`python -m pulse.api.incident_gate`) needs open <= 7 s, induced label, clear <= 10 s: first run 3/3 (opened 3.3-3.7 s, cleared 0.3-0.7 s).
 - Not claimed: detection of a slowly rising latency (no drift rule yet), or anything about exchange-side causes. This session's real feed flapped (producer WebSocket keepalive timeouts), so real, un-induced incidents are expected on this machine.
+
+## Ops view (slider: Detail / Ops) — 2026-11-01
+
+Same frames, calmer presentation (`pulse/web/ops.js`, pure logic, tested under node). **Detail** is unchanged: every measurement at 10 Hz. **Ops** samples once per frame-clock second (so a replay matches), and shows words + icon + colour (never colour alone); exact figures stay in the hover text.
+- **Freshness** (per feed): Fresh < 200 ms, Aging < 500, Stale < 2000, Not to be trusted beyond (the data-age chip bands). Uses last-update age during an outage.
+- **Speed** (60 s pipeline p99, EMA-smoothed, shown rounded to 10 ms): Smooth < 50, Normal < 100, Slow < 200, Late beyond. **Backlog** (processor lag, smoothed): Keeping up < 50, Busy < 200, Behind beyond. **Updates** (5 s mean vs the feed's own earlier median, needs a healthy baseline): Normal >= 70%, Quiet >= 40%, Collapsed below.
+- **Hysteresis:** a label gets worse only after 3 consecutive seconds beyond its band and better after 5, so one spike does not flip it and a flapping value does not flicker. Price shows the last *closed* second.
+- **Headline** = the worst category; any open real incident forces at least "Degraded"; a deliberate test shows "Test in progress". Trust: Verified / Checking / Unverified from the calibration state.
+- The thresholds are judgement calls named after the existing ones, not independently validated; tell me if a word feels wrong. Not claimed: that "All good" means the exchange data is correct, only that Pulse's own view is fresh and keeping up.

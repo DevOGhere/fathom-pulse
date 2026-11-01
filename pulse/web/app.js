@@ -284,7 +284,66 @@ function renderLog() { S.logDirty = false; const l = $('log'); l.textContent = '
 
 // ---------- render loop ----------
 let lastStrip = 0;
+// ---------- Ops mode: calm categories from the same frames (see ops.js). Sampled once per FRAME-clock second, so replays match. ----------
+const OM = { mode: (RQ.get('mode') || localStorage.getItem('pulse.mode') || 'detail') === 'ops' ? 'ops' : 'detail', sec: -1, holds: {}, ema: { speed: new OPS.Ema(0.2), lag: new OPS.Ema(0.3) }, venues: {}, view: null };
+const ICON_SEV = { good: '✔', warning: '▲', serious: '■', critical: '✕' };
+function hold(key, name, v) { const h = OM.holds[key] || (OM.holds[key] = new OPS.Hold()); return OPS.band(name, h.push(OPS.bandIndex(name, v))); }
+function opsSample(f) {          // one decision per second: categories, smoothed numbers, headline
+  const sevs = [], venues = {};
+  for (const [k, s] of Object.entries(f.series)) {
+    const w = s.window_1s, age = w ? w.derived_age_ms : (s.last_msg_age_ms != null ? s.last_msg_age_ms : 1e9);
+    const fresh = hold(k + ':fresh', 'fresh', age), ratio = OPS.rateRatio(s.bins ? s.bins.n_derived : []);
+    const rate = ratio == null ? null : hold(k + ':rate', 'rate', ratio);
+    const mids = s.bins ? s.bins.mid : [], lastMid = [...mids].reverse().find(x => x != null), firstMid = mids.find(x => x != null);
+    venues[k] = { fresh, rate, px: lastMid, chg: lastMid != null && firstMid ? (lastMid / firstMid - 1) * 100 : null, mids, age, ratio };
+    sevs.push(fresh.sev); if (rate) sevs.push(rate.sev);
+  }
+  const sl = f.slo, sp = sl && sl.p99_ms != null ? OM.ema.speed.push(sl.p99_ms) : null, speed = sp == null ? null : hold('speed', 'speed', sp);
+  const lg = f.lag && f.lag.total != null ? OM.ema.lag.push(f.lag.total) : null, backlog = lg == null ? null : hold('backlog', 'backlog', lg);
+  if (speed) sevs.push(speed.sev); if (backlog) sevs.push(backlog.sev);
+  const inc = f.incidents || [], openReal = inc.some(i => i.end_ms == null && !i.induced), induced = !!f.induced || inc.some(i => i.end_ms == null && i.induced);
+  const c = f.calibration || {}, trust = c.status === 'valid' ? { sev: 'good', word: 'Verified', note: 'Pulse checked its own timing and found a known delay.' }
+    : c.status === 'running' ? { sev: 'warning', word: 'Checking', note: 'A self-test is running.' }
+    : { sev: 'warning', word: 'Unverified', note: c.status === 'failed' ? 'The last self-test failed.' : 'The timing has not been verified recently.' };
+  OM.view = { venues, speed, speedMs: sp, backlog, lagN: lg, trust, head: OPS.headline(sevs, openReal, induced), inc };
+}
+const el2 = (tag, cls, text) => { const e = el(tag, cls, text); return e; };
+function chip(b, extra) { const c = el2('span', 'chip2'); c.dataset.sev = b.sev; c.textContent = `${ICON_SEV[b.sev]} ${b.word}`; if (extra) c.title = extra; return c; }
+function spark2(mids) { const v = mids.filter(x => x != null); if (v.length < 3) return ''; const sm = v.map((_, i) => { const a = v.slice(Math.max(0, i - 2), i + 3); return a.reduce((x, y) => x + y, 0) / a.length; });
+  const lo = Math.min(...sm), hi = Math.max(...sm), r = hi - lo || 1; return `<svg viewBox="0 0 300 46" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke="var(--seq-350)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points="${sm.map((q, i) => `${(i / (sm.length - 1) * 300).toFixed(1)},${(42 - (q - lo) / r * 38).toFixed(1)}`).join(' ')}"/></svg>`; }
+function meter(label, b, big, small, steps, tip) { const m = el2('div', 'm'); m.dataset.sev = b ? b.sev : 'good'; m.title = tip || '';
+  const row = el2('div', 'row'); row.append(el2('span', '', label), el2('b', '', b ? `${ICON_SEV[b.sev]} ${b.word}` : '—')); m.append(row);
+  const seg = el2('div', 'seg' + (steps === 3 ? ' three' : '')); for (let i = 0; i < steps; i++) seg.append(el2('i', b && i <= b.i ? 'on' : '')); m.append(seg);
+  m.append(el2('div', 'row', '')); m.lastChild.append(el2('span', '', big), el2('span', '', small || '')); return m; }
+function renderOps(f) {
+  const sec = Math.floor(f.ts_ms / 1000); if (sec !== OM.sec || !OM.view) { OM.sec = sec; opsSample(f); } else return;     // numbers move once a second
+  const v = OM.view, H = v.head;
+  $('opsHero').dataset.sev = H.sev; $('opsHead').textContent = `${ICON_SEV[H.sev]} ${H.word}`; $('opsSub').textContent = H.sub + (v.trust.word !== 'Verified' && H.word === 'All good' ? ' (Timing is ' + v.trust.word.toLowerCase() + '.)' : '');
+  const box = $('opsVenues'); box.textContent = '';
+  for (const [k, x] of Object.entries(v.venues)) { const c = el2('section', 'card vc'); c.dataset.sev = x.fresh.sev;
+    c.append(el2('div', 'name', k + ' · ' + (QUOTE[k.split('/')[0]] || '')), el2('div', 'px', x.px != null ? x.px.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'),
+      el2('div', 'chg', x.chg == null ? '' : `${x.chg >= 0 ? '▲' : '▼'} ${Math.abs(x.chg).toFixed(2)}% in the last minute · as of the last full second`));
+    const sp = document.createElement('div'); sp.innerHTML = spark2(x.mids); c.append(sp);
+    const ch = el2('div', 'chips'); ch.append(chip(x.fresh, `data age ${Math.round(x.age)} ms`)); if (x.rate) ch.append(chip({ sev: x.rate.sev, word: 'Updates: ' + x.rate.word }, x.ratio != null ? `rate is ${(x.ratio * 100).toFixed(0)}% of its normal` : ''));
+    c.append(ch); box.append(c); }
+  const mt = $('opsMeters'); mt.textContent = '';
+  mt.append(meter('Speed (how long an update takes to get here)', v.speed, v.speedMs == null ? '' : `about ${OPS.roundTo(v.speedMs, 10)} ms`, 'slowest 1 in 100 over the last minute', 4, v.speedMs == null ? '' : `pipeline p99 ${v.speedMs.toFixed(1)} ms (smoothed)`),
+    meter('Backlog (is the processor keeping up?)', v.backlog, v.lagN == null ? '' : `${OPS.roundTo(v.lagN, 10)} messages behind`, '', 3, v.lagN == null ? '' : `lag ${v.lagN.toFixed(1)} msgs (smoothed)`),
+    (() => { const t = meter('Trust (does Pulse know its own timing?)', v.trust, v.trust.note, '', 3, ''); t.querySelector('.seg').remove(); return t; })());
+  const ib = $('opsIncs'); ib.textContent = ''; const list = v.inc.slice().sort((a, b) => b.start_ms - a.start_ms).slice(0, 4);
+  if (!list.length) ib.append(el2('div', 'empty', 'No incidents in this session.')); else for (const i of list) { const d = el2('div', 'inc'), h = el2('div', 'h');
+    h.append(el2('b', '', INC_NAME[i.kind] || i.kind), el2('span', '', i.feed || 'processor')); if (i.induced) h.append(el2('span', 'tag', 'induced'));
+    h.append(el2('span', 't num', `${new Date(i.start_ms).toTimeString().slice(0, 8)} · ${i.end_ms == null ? 'ongoing' : Math.round((i.end_ms - i.start_ms) / 1000) + ' s'}`)); d.append(h, el2('div', 'c', i.cause)); ib.append(d); }
+}
+function applyMode(mode, persist) {
+  OM.mode = mode; OM.sec = -1; if (persist) localStorage.setItem('pulse.mode', mode);
+  const ops = mode === 'ops'; $('ops').hidden = !ops; $('detail').hidden = ops; $('strip').hidden = ops; $('modeSlider').value = ops ? 1 : 0;
+  $('mOps').className = ops ? 'on' : ''; $('mDetail').className = ops ? '' : 'on';
+  if (!ops) fitAll(); S.dirty = true;                  // canvases measured 0 px while hidden
+}
+$('modeSlider').addEventListener('input', e => applyMode(e.target.value === '1' ? 'ops' : 'detail', true));
 function render() {
+  if (OM.mode === 'ops' && S.frame) { const t0 = performance.now(); renderChrome(S.frame, sel(), sel() && sel().window_1s); renderCal(S.frame); renderOps(S.frame); S.costs.push(performance.now() - t0); if (S.costs.length > 600) S.costs.shift(); S.draws++; return; }
   const f = S.frame, t0 = performance.now(); if (!f) { renderChrome({ lag: {}, client: { drops: 0 } }, null, null); return; }
   const s = sel(), w = s && s.window_1s, now = f.ts_ms;
   renderChrome(f, s, w); drawMid(now); drawObi(now); drawTimeline(now); drawAnat(now); drawHist(); renderCal(f); renderIncidents(f); renderDq(f); renderTob(s); renderFeeds(f);
@@ -302,4 +361,4 @@ setInterval(() => { $('sbClock').textContent = new Date().toTimeString().slice(0
   fetch('/debug/stats', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ raf_fps: +fps.toFixed(1), draws: S.draws, msgs: S.msgs, render_ms_p50: pct(S.costs, 50), render_ms_p99: p99,
     render_ms_max: S.costs.length ? Math.max(...S.costs) : null, seq_missed: S.seqGaps, dpr: window.devicePixelRatio, w: innerWidth, h: innerHeight, connected: S.connected, at: Date.now() }) }).catch(() => {});
   if (dt > 10) { S.rafTicks = 0; tick0 = performance.now(); } }, 1000);
-fitAll(); logEv('info', 'Page loaded'); renderLog(); if (REPLAY_URL) { startReplay(REPLAY_URL); $('btnTest').disabled = true; $('btnTest').title = 'Replays cannot run a self-test'; document.querySelector('.statusbar span:last-child').textContent = 'REPLAY · recorded data, not live'; } else connect(); requestAnimationFrame(loop);
+applyMode(OM.mode, false); fitAll(); logEv('info', 'Page loaded'); renderLog(); if (REPLAY_URL) { startReplay(REPLAY_URL); $('btnTest').disabled = true; $('btnTest').title = 'Replays cannot run a self-test'; document.querySelector('.statusbar span:last-child').textContent = 'REPLAY · recorded data, not live'; } else connect(); requestAnimationFrame(loop);

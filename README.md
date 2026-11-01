@@ -9,7 +9,8 @@ Two lenses on one timeline: **market microstructure** (mid, microprice, order-bo
 1. **Every number carries its age.** Data-age chips on every panel; the *Anatomy of a Tick* waterfall splits an update's life into measured stages (producer → derived → Pulse consumed → ready for a frame). Stamps are host-side monotonic; nothing is estimated unless it says so.
 2. **It tests itself.** Every few minutes Pulse injects a known delay (80 ms) at a real stamp site of one of its own stages, and checks that the waterfall finds the right stage and size. The badge shows *Calibrated ±N ms, valid for M min*, *inconclusive* (the system was not steady) or *failed*. A sham window first proves the test does not cry wolf.
 3. **It says when the feed is gone.** An outage reads as a growing "last update N s ago", never as "no data yet". Incidents (stall, rate collapse, processor lag) are detected from measured data, shaded on the timeline, and explained with a cause that only claims what Pulse can see.
-4. **It can replay a recording** through the same code path as live data, deterministically (two cold browsers produce byte-identical renders).
+4. **Two views on one slider.** *Detail* shows every measurement at 10 Hz; *Ops* turns the same data into calm, categorical status (Fresh / Smooth / Keeping up, with hysteresis so labels do not flicker).
+5. **It can replay a recording** through the same code path as live data, deterministically (two cold browsers produce byte-identical renders).
 
 ## Run it
 
@@ -37,7 +38,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ## Gates (what "works" means here; all runnable)
 
 ```
-.venv/bin/python -m pytest -q                              # 55 unit/contract tests
+.venv/bin/python -m pytest -q                              # 56 unit/contract tests (incl. the node-run Ops logic)
 .venv/bin/python -m pulse.api.soak --seconds 120           # frame cadence, drops, backpressure
 .venv/bin/python -m pulse.api.calib_gate --runs 10         # calibration finds the injected delay (live)
 .venv/bin/python -m pulse.api.incident_gate --runs 3       # induced stall is detected, labelled, cleared (live)
