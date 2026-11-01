@@ -38,12 +38,13 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ## Gates (what "works" means here; all runnable)
 
 ```
-.venv/bin/python -m pytest -q                              # 56 unit/contract tests (incl. the node-run Ops logic)
+.venv/bin/python -m pytest -q                              # 61 unit/contract tests (incl. the node-run Ops logic)
 .venv/bin/python -m pulse.api.soak --seconds 120           # frame cadence, drops, backpressure
 .venv/bin/python -m pulse.api.calib_gate --runs 10         # calibration finds the injected delay (live)
 .venv/bin/python -m pulse.api.incident_gate --runs 3       # induced stall is detected, labelled, cleared (live)
 .venv/bin/python tools/replay_check.py <scratch> /static/captures/<name>.ndjson   # replay determinism, 2 cold browsers
 .venv/bin/python tools/sane_check.py                       # cross-check against Fathom's Prometheus (read-only)
+.venv/bin/python tools/chaos.py 8                           # a REAL 8 s processor stall (SIGSTOP/SIGCONT): the detector must say processor side and open lag_spike
 ```
 
 ## What this is not

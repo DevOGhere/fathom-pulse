@@ -71,3 +71,11 @@ Same frames, calmer presentation (`pulse/web/ops.js`, pure logic, tested under n
 - **Hysteresis:** a label gets worse only after 3 consecutive seconds beyond its band and better after 5, so one spike does not flip it and a flapping value does not flicker. Price shows the last *closed* second.
 - **Headline** = the worst category; any open real incident forces at least "Degraded"; a deliberate test shows "Test in progress". Trust: Verified / Checking / Unverified from the calibration state.
 - The thresholds are judgement calls named after the existing ones, not independently validated; tell me if a word feels wrong. Not claimed: that "All good" means the exchange data is correct, only that Pulse's own view is fresh and keeping up.
+
+### Real-fault check (tools/chaos.py) and what it found — 2026-11-01
+
+`tools/chaos.py 8` SIGSTOPs Fathom's host-side processor for 8 s (cap 10; SIGCONT on every exit path), so lag climbs and records stop for real, nothing synthetic. The first run showed two wrong behaviours that the induced-stall gate could not:
+1. The stall's cause said "the processor has no backlog (78 msgs behind)... the gap is upstream" while the queue was climbing to 360. **Fix:** the cause now uses the queue's *trend*, not only its level (growing = above max(30, normal + 3 sigma) or +40 in 4 s), is rewritten while the stall is open as evidence arrives, and says "at or inside the processor, not at the exchange" when the queue grows. When it is flat it says "looks upstream of the processor... Pulse cannot tell which". It never names the exchange.
+2. `lag_spike` did not open (lag was above 200 for only ~3 s at the 2 s poll). **Fix:** it also opens on a sustained climb: at least two successive *different* polls, each higher, at >= 100 and +80 over 4 s. One burst is two identical ticks and is not a climb.
+3. A cosmetic one: after recovery the cause said "only one feed went quiet" because it was recomputed when both had recovered; it is now refreshed only while the feed is still silent.
+Result on the real stall: both feeds' stalls (processor side, "both feeds went quiet together"), `lag_spike` (real, not induced), `latency_drift` (pipeline 18 -> 700 ms while the backlog drained). Peak lag 267 to 360.

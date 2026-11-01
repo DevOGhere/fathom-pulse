@@ -19,6 +19,8 @@ STALL_OPEN_S, STALL_CLOSE_S = 3.0, 1.0
 Z_RATE, RATE_RATIO, MIN_BASE_RATE, BASE_S, FAST_S = 4.0, 0.5, 3.0, 60, 5
 RATE_PERSIST = 3      # the rate_drop condition must hold this many seconds in a row (a 1 s hiccup on both feeds fired it at z=-4.1 on 2026-11-01)
 LAG_FLOOR, Z_LAG, LAG_SECONDS = 200, 5.0, 3
+LAG_SOFT, CLIMB_N, CLIMB_MIN, CLIMB_RISES = 30, 4, 40, 2   # queue 'growing' = >= CLIMB_MIN msgs higher than CLIMB_N s ago, or above the soft floor.
+# lag_spike also opens on a sustained climb: >= CLIMB_RISES successive DIFFERENT polls, each higher (the monitor polls every 2 s, so one burst is two identical ticks, not a climb), at >= 100 and +80 over 4 s
 DRIFT_MIN_MS, Z_DRIFT, DRIFT_RATIO = 20.0, 5.0, 1.5     # latency_drift: needs >= +20 ms AND > 1.5x the preceding minute AND > 5 robust sigma
 KEEP = 40
 
@@ -63,6 +65,9 @@ class Detector:
         self.done: deque = deque(maxlen=KEEP)
         self._n = 0
         self._lag_run = 0
+        self._rises = 0
+        self._prev_lag = None
+        self.lag_hist: deque = deque(maxlen=12)       # lag as seen on previous ticks (the monitor polls every 2 s, so values repeat)
         self.lats: deque = deque(maxlen=BASE_S + 5)
         self._rate_run: dict[str, int] = {}
         self._cool: dict[str, int] = {}      # seconds left after a stall during which rate_drop is not judged (its zeros are the stall's, not a second incident)
@@ -77,16 +82,29 @@ class Detector:
         inc.end_ms = o.t_ms
         self.done.append(inc)
 
+    def _lag_view(self, o: Obs):
+        """('unknown'|'growing'|'flat', baseline). Growing = the queue is above its soft floor or has climbed >= CLIMB_MIN in CLIMB_N s."""
+        if o.lag is None:
+            return "unknown", None
+        base = list(self.lags)
+        med, sig = (_robust(base) if len(base) >= 10 else (5.0, 5.0))
+        hist = list(self.lag_hist)
+        climbed = len(hist) >= CLIMB_N and o.lag - hist[-CLIMB_N] >= CLIMB_MIN
+        return ("growing" if (o.lag >= max(LAG_SOFT, med + 3 * sig) or climbed) else "flat"), med
+
     def _cause_silent(self, feed: str, o: Obs) -> str:
         silent = [k for k, f in o.feeds.items() if f["age_s"] is not None and f["age_s"] > STALL_OPEN_S]
-        lag_ok = o.lag is not None and o.lag < LAG_FLOOR
         where = "both feeds went quiet together" if len(silent) > 1 else f"only {feed} went quiet; the other feed kept flowing"
         if o.induced:
             return "Induced: Pulse was told to drop this feed's records on purpose (incident demo)."
-        if lag_ok:
-            return (f"Records stopped reaching Pulse, and the processor has no backlog ({o.lag} msgs behind), so nothing is queued up: "
-                    f"the gap is upstream of Fathom's processor (exchange feed, network or producer). {where}.")
-        return f"Records stopped, and the processor is {o.lag if o.lag is not None else 'unknown'} msgs behind, so the cause is not clear from Pulse's side. {where}."
+        state, med = self._lag_view(o)
+        if state == "growing":
+            return (f"Records stopped reaching Pulse while the processor's queue is growing ({o.lag} msgs behind, normally about {round(med)}). "
+                    f"Messages are arriving but not being processed, so the stall is at or inside the processor, not at the exchange. {where}.")
+        if state == "flat":
+            return (f"Records stopped reaching Pulse and the processor's queue is not growing ({o.lag} msgs), so nothing is piling up in front of it. "
+                    f"The gap looks upstream of the processor (exchange feed, network or producer); Pulse cannot tell which. {where}.")
+        return f"Records stopped, and the processor's queue cannot be read right now, so the cause is not clear from Pulse's side. {where}."
 
     # ---- main entry: call once per second ----
     def update(self, o: Obs) -> list[tuple[str, Incident]]:
@@ -100,6 +118,8 @@ class Detector:
                 self._start("stall", feed, o, "serious", self._cause_silent(feed, o), {"age_s": round(age, 1), "lag": o.lag})
             elif key in self.open:
                 inc = self.open[key]
+                if not inc.induced and age is not None and age > STALL_OPEN_S:      # only while still silent: the closing tick sees both feeds back and would misreport 'only one went quiet'
+                    inc.cause = self._cause_silent(feed, o)
                 if age is not None and age > 10 and inc.severity != "critical":
                     inc.severity = "critical"
                 inc.evidence["peak_age_s"] = round(max(inc.evidence.get("peak_age_s", 0), age or 0), 1)
@@ -141,14 +161,20 @@ class Detector:
                 med, sig = _robust(base)
                 thr = max(LAG_FLOOR, med + Z_LAG * sig)
             self._lag_run = self._lag_run + 1 if o.lag > thr else 0
+            h4 = list(self.lag_hist)
+            if self._prev_lag is not None and o.lag != self._prev_lag:
+                self._rises = self._rises + 1 if o.lag > self._prev_lag else 0
+            self._prev_lag = o.lag
+            climbing = self._rises >= CLIMB_RISES and o.lag >= 100 and len(h4) >= CLIMB_N and o.lag - h4[-CLIMB_N] >= 80
             key = ("lag_spike", None)
-            if key not in self.open and self._lag_run >= LAG_SECONDS:
+            if key not in self.open and (self._lag_run >= LAG_SECONDS or climbing):
                 self._start("lag_spike", None, o, "serious", "Fathom's processor is falling behind: messages are queueing between the broker and the processor, so every number downstream gets older. Pulse is reading the same stream and sees the delay too.", {"lag": o.lag, "threshold": round(thr)})
             elif key in self.open:
                 self.open[key].evidence["peak_lag"] = max(self.open[key].evidence.get("peak_lag", 0), o.lag)
                 if self._lag_run == 0 and o.lag < thr * 0.5:
                     self._end(key, o)
             self.lags.append(o.lag)
+            self.lag_hist.append(o.lag)
         # latency drift: the pipeline got slower while records still flow
         if o.lat_ms is not None:
             self.lats.append(o.lat_ms)

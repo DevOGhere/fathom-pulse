@@ -28,7 +28,7 @@ def test_stall_opens_after_threshold_and_closes_on_recovery_with_upstream_cause(
     ev = run(d, 6, ra=0, age_a=4.0, t0=60)                       # binance silent, coinbase fine, processor has no backlog
     assert [(k, i.kind) for k, i in ev] == [("open", "stall")]
     inc = d.snapshot()[0]
-    assert inc["feed"] == A and "upstream of Fathom" in inc["cause"] and "only binance/btcusdt went quiet" in inc["cause"]
+    assert inc["feed"] == A and "upstream of the processor" in inc["cause"] and "cannot tell which" in inc["cause"] and "only binance/btcusdt went quiet" in inc["cause"]
     run(d, 3, ra=10, age_a=0.2, t0=66)
     done = d.snapshot()[0]
     assert done["end_ms"] is not None and done["kind"] == "stall"
@@ -47,7 +47,7 @@ def test_stall_with_backlog_does_not_blame_upstream():
     run(d, 60)
     run(d, 5, ra=0, age_a=5, lag=900, t0=60)
     c = next(i for i in d.snapshot() if i["kind"] == "stall")["cause"]
-    assert "upstream" not in c and "not clear" in c
+    assert "upstream" not in c and "growing" in c
 
 
 def test_rate_drop_is_detected_but_a_mild_dip_is_not():
@@ -127,3 +127,48 @@ def test_a_one_or_two_second_dip_is_not_a_rate_drop_incident():
     run(d, 1, ra=3, t0=91)                       # ... and a thin one, then back to normal
     run(d, 20, t0=92)
     assert ("rate_drop", A) not in kinds(d), kinds(d)
+
+
+def lagged(det, lags, t0, ra=0, age=5.0):
+    for k, lg in enumerate(lags):
+        det.update(Obs((t0 + k) * 1000, {A: {"rate": ra, "age_s": 0.1 + age + k}, B: {"rate": ra, "age_s": 0.1 + age + k}}, lg))
+
+
+def test_real_processor_stall_is_not_blamed_on_the_exchange():
+    # the 2026-11-01 chaos run: processor SIGSTOPped, records stop, lag climbs 5 -> 78 -> ... ; the old text said "no backlog ... upstream"
+    d = Detector()
+    run(d, 60)
+    lagged(d, [5, 5, 78, 78, 190, 190], 60, age=0.0)
+    cause = next(i for i in d.snapshot() if i["kind"] == "stall")["cause"]
+    assert "growing" in cause and "at or inside the processor" in cause and "upstream of the processor" not in cause, cause
+
+
+def test_stall_cause_is_revised_when_the_lag_evidence_arrives_late():
+    d = Detector()
+    run(d, 60)
+    lagged(d, [5, 5, 5, 5], 60, age=0.0)                       # stall opens while the queue still looks flat: honest "cannot tell which"
+    assert "cannot tell which" in next(i for i in d.snapshot() if i["kind"] == "stall")["cause"]
+    lagged(d, [5, 90, 90, 200], 64, age=4.0)                   # the queue then starts to grow: the cause is rewritten
+    assert "growing" in next(i for i in d.snapshot() if i["kind"] == "stall")["cause"]
+
+
+def test_a_sustained_lag_climb_opens_lag_spike_but_one_burst_does_not():
+    d = Detector()
+    run(d, 60)
+    run(d, 2, lag=300, t0=60); run(d, 6, lag=5, t0=62)         # a single burst that recovers: not an incident
+    assert ("lag_spike", None) not in kinds(d)
+    d2 = Detector()
+    run(d2, 60)
+    for k, lg in enumerate([5, 5, 78, 78, 190, 190, 300, 300]):  # steady climb, polled every 2 s (values repeat)
+        run(d2, 1, lag=lg, t0=60 + k)
+    assert ("lag_spike", None) in kinds(d2), kinds(d2)
+
+
+def test_final_cause_of_a_two_feed_stall_still_says_both_after_recovery():
+    d = Detector()
+    run(d, 60)
+    lagged(d, [5, 5, 5, 5, 5, 5], 60, age=0.0)                 # both feeds silent together
+    run(d, 3, ra=10, age_a=0.2, age_b=0.2, t0=66)              # both recover on the same second
+    stalls = [i for i in d.snapshot() if i["kind"] == "stall"]
+    assert len(stalls) == 2 and all(i["end_ms"] for i in stalls)
+    assert all("both feeds went quiet together" in i["cause"] for i in stalls), [i["cause"][-70:] for i in stalls]
