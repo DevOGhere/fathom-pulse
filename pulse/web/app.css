@@ -184,9 +184,8 @@
   .ops[hidden], #detail[hidden], #strip[hidden] { display: none; }
   .ops .hero { margin: 12px 16px 0; padding: 16px 22px; border-left: 5px solid var(--st, var(--status-good)); display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap; transition: border-color .6s; }
   .ops .hl { font-size: 28px; font-weight: 700; letter-spacing: -.015em; } .ops .hs { color: var(--ink-secondary); font-size: 14px; }
-  .ops .card { padding: 18px 20px; } .ops .card canvas { width: 100%; display: block; }
+  .ops .card canvas { width: 100%; display: block; }
   .ops h3 { font-size: 15px; font-weight: 650; margin: 0 0 12px; color: var(--ink-primary); letter-spacing: -.005em; cursor: help; width: fit-content; } .ops h3 .sub { font-weight: 400; color: var(--ink-muted); font-size: 12px; margin-left: 6px; }
-  .ops .lens { display: grid; gap: 14px; align-content: start; }
   .ops .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } .ops .kpis.one { grid-template-columns: 1fr; }
   .ops .kpis .m { background: rgba(255,255,255,.035); border-radius: 12px; padding: 13px 15px; cursor: help; transition: background .2s; } .ops .kpis .m:hover { background: rgba(255,255,255,.065); }
   .ops .m .lbl { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-muted); }

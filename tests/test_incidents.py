@@ -172,3 +172,12 @@ def test_final_cause_of_a_two_feed_stall_still_says_both_after_recovery():
     stalls = [i for i in d.snapshot() if i["kind"] == "stall"]
     assert len(stalls) == 2 and all(i["end_ms"] for i in stalls)
     assert all("both feeds went quiet together" in i["cause"] for i in stalls), [i["cause"][-70:] for i in stalls]
+
+
+def test_ordinary_lag_wobble_below_the_climb_signature_is_not_a_lag_spike():
+    # the 2026-11-02 false alarms: lag 20 -> 90 -> 146 -> 120 -> 160 -> 130 on a busy machine (2 s polls, values repeat)
+    d = Detector()
+    run(d, 60)
+    for k, lg in enumerate([20, 20, 90, 90, 146, 146, 120, 120, 160, 160, 130, 130, 190, 190, 140, 140]):
+        run(d, 1, lag=lg, t0=60 + k)
+    assert ("lag_spike", None) not in kinds(d), kinds(d)

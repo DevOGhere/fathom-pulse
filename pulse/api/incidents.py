@@ -19,8 +19,8 @@ STALL_OPEN_S, STALL_CLOSE_S = 3.0, 1.0
 Z_RATE, RATE_RATIO, MIN_BASE_RATE, BASE_S, FAST_S = 4.0, 0.5, 3.0, 60, 5
 RATE_PERSIST = 3      # the rate_drop condition must hold this many seconds in a row (a 1 s hiccup on both feeds fired it at z=-4.1 on 2026-11-01)
 LAG_FLOOR, Z_LAG, LAG_SECONDS = 200, 5.0, 3
-LAG_SOFT, CLIMB_N, CLIMB_MIN, CLIMB_RISES = 30, 4, 40, 2   # queue 'growing' = >= CLIMB_MIN msgs higher than CLIMB_N s ago, or above the soft floor.
-# lag_spike also opens on a sustained climb: >= CLIMB_RISES successive DIFFERENT polls, each higher (the monitor polls every 2 s, so one burst is two identical ticks, not a climb), at >= 100 and +80 over 4 s
+LAG_SOFT, CLIMB_N, CLIMB_MIN, CLIMB_RISES = 30, 4, 40, 3   # queue 'growing' = >= CLIMB_MIN msgs higher than CLIMB_N s ago, or above the soft floor.
+# lag_spike also opens on a sustained climb: >= CLIMB_RISES (3) successive DIFFERENT polls, each higher (the monitor polls every 2 s, so one burst is two identical ticks, not a climb), at >= 150 and +120 over 4 s. Two rises at 100-190 fired 10 false lag_spikes in 17 min on a busy Mac (2026-11-02), so it was tightened
 DRIFT_MIN_MS, Z_DRIFT, DRIFT_RATIO = 20.0, 5.0, 1.5     # latency_drift: needs >= +20 ms AND > 1.5x the preceding minute AND > 5 robust sigma
 KEEP = 40
 
@@ -165,7 +165,7 @@ class Detector:
             if self._prev_lag is not None and o.lag != self._prev_lag:
                 self._rises = self._rises + 1 if o.lag > self._prev_lag else 0
             self._prev_lag = o.lag
-            climbing = self._rises >= CLIMB_RISES and o.lag >= 100 and len(h4) >= CLIMB_N and o.lag - h4[-CLIMB_N] >= 80
+            climbing = self._rises >= CLIMB_RISES and o.lag >= 150 and len(h4) >= CLIMB_N and o.lag - h4[-CLIMB_N] >= 120
             key = ("lag_spike", None)
             if key not in self.open and (self._lag_run >= LAG_SECONDS or climbing):
                 self._start("lag_spike", None, o, "serious", "Fathom's processor is falling behind: messages are queueing between the broker and the processor, so every number downstream gets older. Pulse is reading the same stream and sees the delay too.", {"lag": o.lag, "threshold": round(thr)})
