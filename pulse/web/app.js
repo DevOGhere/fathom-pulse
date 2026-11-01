@@ -86,7 +86,7 @@ const ids = ['cMid', 'cObi', 'cQuote', 'cLag', 'cAnat', 'cHist'];
 function fitAll() { ids.forEach(fit); S.dirty = true; }
 new ResizeObserver(fitAll).observe(document.body);
 
-const PAD = { l: 48, r: 10, t: 6, b: 18 };
+const PAD = { l: 64, r: 10, t: 6, b: 18 };
 const px = (g, t, now) => PAD.l + (g.w - PAD.l - PAD.r) * (1 - (now - t) / TAIL_MS);
 const py = (g, v, a, b) => PAD.t + (g.h - PAD.t - PAD.b) * (1 - (v - a) / ((b - a) || 1));
 function axes(g, a, b, ticks, fmt, xl = true) {
@@ -115,14 +115,19 @@ function drawObi(now) {
   t.forEach(p => { if (p.obi == null) return; const X = px(g, p.t, now), Y = py(g, p.obi, -1, 1); x.fillStyle = p.obi >= 0 ? C.bid : C.ask; x.fillRect(X - bw, Math.min(z, Y), bw, Math.abs(Y - z)); });
   x.strokeStyle = C.base; x.beginPath(); x.moveTo(PAD.l, Math.round(z) + .5); x.lineTo(g.w - PAD.r, Math.round(z) + .5); x.stroke();
 }
+function bands(gg, now) {    // incident annotations: red = real, orange = induced on purpose
+  for (const i of (S.frame.incidents || [])) { const t0 = Math.max(i.start_ms, now - TAIL_MS), t1 = Math.min(i.end_ms == null ? now : i.end_ms, now);
+    if (t1 <= t0) continue; gg.x.fillStyle = i.induced ? 'rgba(236,131,90,0.16)' : 'rgba(229,72,77,0.20)'; gg.x.fillRect(px(gg, t0, now), PAD.t, Math.max(2, px(gg, t1, now) - px(gg, t0, now)), gg.h - PAD.t - PAD.b); }
+}
 function drawTimeline(now) {
   const s = sel(), g1 = cvs.cQuote, g2 = cvs.cLag;
   if (!s || !s.bins) { emptyChart(g1, 'Waiting for data…'); emptyChart(g2, 'Waiting for data…'); return; }
   const b = s.bins, rmax = Math.max(20, ...b.n_derived); axes(g1, 0, rmax, 2, v => v.toFixed(0) + '/s', false);
+  bands(g1, now);
   const x = g1.x; x.strokeStyle = C.seq; x.lineWidth = 2; x.lineJoin = 'round'; x.beginPath();
   b.start_s.forEach((st, i) => { const X = px(g1, (st + 1) * 1000, now), Y = py(g1, b.n_derived[i], 0, rmax); i ? x.lineTo(X, Y) : x.moveTo(X, Y); }); x.stroke();
   const lh = S.lagHist.filter(p => p.lag != null); if (lh.length < 2) return emptyChart(g2, S.frame.lag.ok ? 'Waiting for lag samples…' : 'Lag unavailable: ' + (S.frame.lag.error || 'unknown'));
-  const lmax = Math.max(50, ...lh.map(p => p.lag)); axes(g2, 0, lmax, 3, v => v.toFixed(0));
+  const lmax = Math.max(50, ...lh.map(p => p.lag)); axes(g2, 0, lmax, 3, v => v.toFixed(0)); bands(g2, now);
   const y = g2.x; y.strokeStyle = C.sec; y.lineWidth = 2; y.lineJoin = 'round'; y.beginPath(); lh.forEach((p, i) => { const X = px(g2, p.t, now), Y = py(g2, p.lag, 0, lmax); i ? y.lineTo(X, Y) : y.moveTo(X, Y); }); y.stroke();
 }
 
@@ -233,7 +238,21 @@ function renderCal(f) {
   t.textContent = !sl || sl.met == null ? '—' : unv ? 'Unverified' : sl.met ? 'Met' : 'Breached'; t.style.color = unv && sl && sl.met != null ? 'var(--status-warning)' : sl && sl.met === false ? 'var(--status-critical)' : '';
   $('tSloS').textContent = sl && sl.p99_ms != null ? `pipeline p99 ${sl.p99_ms} ms vs ${sl.target_ms} · + ${sl.tick_wait_p50_ms} ms median wait for the next 10 Hz frame (by design) · ${sl.n} records${unv ? ' · calibration not valid' : ''}` : 'needs data';
 }
+$('btnInduce').addEventListener('click', () => { $('btnInduce').disabled = true; fetch('/incident/induce?seconds=8', { method: 'POST' }).catch(() => {}); setTimeout(() => { $('btnInduce').disabled = !!S.replay; }, 9000); });
 $('btnTest').addEventListener('click', () => { $('btnTest').disabled = true; fetch('/calibrate', { method: 'POST' }).catch(() => {}); });
+const INC_NAME = { stall: 'Feed stalled', rate_drop: 'Update rate collapsed', lag_spike: 'Processor falling behind' };
+function renderIncidents(f) {
+  const box = $('incs'), list = (f.incidents || []).slice().sort((a, b) => b.start_ms - a.start_ms); box.textContent = '';
+  if (!list.length) { box.append(el('div', 'empty', 'No incidents in this session.')); return; }
+  for (const i of list) {
+    const d = el('div', 'inc'), h = el('div', 'h'), sev = i.severity === 'critical' ? 'critical' : i.severity === 'serious' ? 'serious' : 'warning';
+    const dot = el('i', 'sdot ' + (i.end_ms == null ? 'critical' : 'warning')); if (i.end_ms != null) dot.style.background = 'var(--ink-muted)';
+    h.append(dot, el('b', '', INC_NAME[i.kind] || i.kind), el('span', '', i.feed || 'processor'));
+    if (i.induced) h.append(el('span', 'tag', 'induced'));
+    const dur = i.end_ms == null ? 'ongoing' : `${((i.end_ms - i.start_ms) / 1000).toFixed(0)} s`, tm = new Date(i.start_ms).toTimeString().slice(0, 8);
+    h.append(el('span', 't num', `${tm} · ${dur}`)); d.append(h, el('div', 'c', i.cause)); box.append(d);
+  }
+}
 function renderDq(f) {
   const t = $('dq'); t.textContent = ''; const h = t.insertRow(); ['Venue', 'Empty seconds', 'Spread blank', 'Stalled for'].forEach(x => h.append(Object.assign(document.createElement('th'), { textContent: x })));
   for (const [k, s] of Object.entries(f.series)) { const d = s.dq; if (!d) continue; const r = t.insertRow(); r.insertCell().textContent = k; r.insertCell().textContent = `${d.empty_bins_60} of ${d.bins_60}`;
@@ -268,7 +287,7 @@ let lastStrip = 0;
 function render() {
   const f = S.frame, t0 = performance.now(); if (!f) { renderChrome({ lag: {}, client: { drops: 0 } }, null, null); return; }
   const s = sel(), w = s && s.window_1s, now = f.ts_ms;
-  renderChrome(f, s, w); drawMid(now); drawObi(now); drawTimeline(now); drawAnat(now); drawHist(); renderCal(f); renderDq(f); renderTob(s); renderFeeds(f);
+  renderChrome(f, s, w); drawMid(now); drawObi(now); drawTimeline(now); drawAnat(now); drawHist(); renderCal(f); renderIncidents(f); renderDq(f); renderTob(s); renderFeeds(f);
   if (t0 - lastStrip > 900 || !$('strip').children.length) { renderStrip(f); lastStrip = t0; }
   if (S.logDirty || (f.events && f.events.length !== S.lastEv)) { S.lastEv = f.events ? f.events.length : 0; renderLog(); }
   $('sbSeq').textContent = `frame #${f.seq}` + (S.seqGaps ? ` · ${S.seqGaps} missed` : '');

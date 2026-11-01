@@ -162,3 +162,11 @@
 .grid { grid-template-columns: 1.1fr 1fr .8fr; }
 @media (max-width: 1280px) { .grid { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 1000px) { .grid { grid-template-columns: 1fr; } }
+
+  .incs { font-size: 12px; max-height: 300px; overflow: auto; }
+  .inc { padding: 7px 0; border-top: 1px solid var(--line, rgba(255,255,255,.08)); }
+  .inc:first-child { border-top: 0; }
+  .inc .h { display: flex; gap: 8px; align-items: baseline; }
+  .inc .h b { font-weight: 600; } .inc .t { color: var(--ink-muted); margin-left: auto; }
+  .inc .c { color: var(--ink-secondary); margin-top: 3px; line-height: 1.4; }
+  .inc .tag { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; padding: 1px 6px; border-radius: 8px; border: 1px solid currentColor; color: var(--status-warning); }

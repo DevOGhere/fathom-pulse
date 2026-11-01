@@ -60,6 +60,7 @@ class Detector:
         self.done: deque = deque(maxlen=KEEP)
         self._n = 0
         self._lag_run = 0
+        self._cool: dict[str, int] = {}      # seconds left after a stall during which rate_drop is not judged (its zeros are the stall's, not a second incident)
 
     # ---- helpers ----
     def _start(self, kind, feed, o: Obs, severity, cause, evidence) -> None:
@@ -100,12 +101,17 @@ class Detector:
                 if age is not None and age < STALL_CLOSE_S:
                     self._end(key, o)
             stalled = ("stall", feed) in self.open
+            if stalled:
+                self._cool[feed] = FAST_S + 1
+            elif self._cool.get(feed, 0) > 0:
+                self._cool[feed] -= 1
+            cooling = self._cool.get(feed, 0) > 0
             # rate drop (judged against history from BEFORE this second, never while stalled: that is the stall's job)
             base = list(hist)[:-FAST_S] if len(hist) > FAST_S else []
             fast = list(hist)[-FAST_S:] + [f["rate"]]
             fast = fast[-FAST_S:]
             key = ("rate_drop", feed)
-            if len(base) >= 30 and not stalled:
+            if len(base) >= 30 and not stalled and not cooling:
                 med, sig = _robust(base)
                 mean_fast = sum(fast) / len(fast)
                 z = (mean_fast - med) / sig

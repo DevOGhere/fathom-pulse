@@ -74,3 +74,11 @@ def test_induced_overlap_is_labelled_induced_and_not_called_an_outage():
     run(d, 6, ra=0, rb=0, age_a=4, age_b=4, induced=True, t0=60)
     incs = d.snapshot()
     assert incs and all(i["induced"] and i["cause"].startswith("Induced") for i in incs)
+
+
+def test_recovery_after_a_stall_is_not_reported_as_a_second_rate_drop_incident():
+    d = Detector()
+    run(d, 60)
+    run(d, 8, ra=0, age_a=5, t0=60)                  # stall opens
+    run(d, 12, ra=10, age_a=0.2, t0=68)              # recovery: the fast window still holds zeros for ~5 s
+    assert all(i["kind"] == "stall" for i in d.snapshot()), [(i["kind"], i["feed"]) for i in d.snapshot()]
