@@ -3,3 +3,4 @@ __pycache__/
 .venv/
 captures/
 .DS_Store
+pulse/web/captures/*.ndjson

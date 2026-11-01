@@ -19,11 +19,29 @@ const S = { frame: null, sel: null, tail: {}, lagHist: [], connected: false, eve
   lastSeq: 0, seqGaps: 0, pct: 99, loc: {}, hits: [], pinned: null, srvEv: [], lastDrops: 0, lagHigh: false, log: [], draws: 0, msgs: 0, costs: [], rafTicks: 0, lastStale: false };
 const TAIL_MS = 60000, TAIL_MAX = 700;
 
-function logEv(level, text) { S.log.unshift({ t_ms: Date.now(), level, text }); if (S.log.length > 40) S.log.pop(); S.logDirty = true; }
+const nowMs = () => (S.replay ? (S.frame ? S.frame.ts_ms : S.replay.start_ms) : Date.now());   // replay: the log is stamped by recorded time, not by when you opened the page
+function logEv(level, text) { S.log.unshift({ t_ms: nowMs(), level, text }); if (S.log.length > 40) S.log.pop(); S.logDirty = true; }
 const LOCAL = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);   // stage 4 is only meaningful on the same host clock
 
 // ---------- socket ----------
+const RQ = new URLSearchParams(location.search), REPLAY_URL = RQ.get('replay'), MANUAL = RQ.has('manual');
 let ws, backoff = 500;
+// ---------- replay: recorded frames through the SAME ingest()/render() path as live data ----------
+async function startReplay(url) {
+  const txt = await (await fetch(url)).text(), lines = txt.split('\n').filter(Boolean), head = JSON.parse(lines[0]).capture, frames = lines.slice(1).map(l => JSON.parse(l));
+  S.replay = head; S.connected = true; S.everConnected = true;
+  const feed = i => { const f = frames[i]; f.client = { drops: 0, sent: i + 1, queue_max: 2 }; S.lastSeq = 0; ingest(f); };
+  const reset = () => { S.tail = {}; S.lagHist = []; S.lastSeq = 0; S.seqGaps = 0; S.log = []; S.sel = null; S.frame = null; S.pinned = null; };
+  logEv('info', `Replaying a recording: ${head.title}`);
+  window.__pulse = { head, n: frames.length,
+    async run(n) { fitAll(); reset(); for (let i = 0; i < n; i++) feed(i); render(); S.dirty = false; return this.hash(); },     // deterministic jump for the replay test
+    async hash() { const names = ['cMid', 'cObi', 'cQuote', 'cLag', 'cAnat', 'cHist', 'tLag', 'tRate', 'tSlo', 'tSloS', 'heroMid', 'calHead', 'dq', 'feeds', 'tape'];
+      const parts = names.map(id => id.startsWith('c') && id !== 'calHead' ? $(id).toDataURL() : $(id).textContent), enc = new TextEncoder(),
+        sha = async t => [...new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(t)))].map(x => x.toString(16).padStart(2, '0')).join(''),
+        each = await Promise.all(parts.map(sha)); return JSON.stringify({ all: await sha(each.join()), parts: Object.fromEntries(names.map((n, i) => [n, each[i].slice(0, 12)])), text: Object.fromEntries(names.slice(6).map((n, i) => [n, parts[i + 6].slice(0, 160)])) }); } };
+  if (MANUAL) return;
+  let i = 0; const t = setInterval(() => { if (i >= frames.length) { i = 0; reset(); logEv('info', 'Recording ended; starting again'); } feed(i++); }, 100);
+}
 function connect() {
   ws = new WebSocket(`ws://${location.host}/stream`);
   ws.onopen = () => { S.connected = true; backoff = 500; S.tail = {}; S.lagHist = []; S.lastSeq = 0;
@@ -62,7 +80,7 @@ const cvs = {};
 function fit(id) {
   const c = $(id), dpr = window.devicePixelRatio || 1, h = +c.dataset.h, w = c.clientWidth;
   c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c.style.height = h + 'px';
-  const x = c.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0); cvs[id] = { c, x, w, h };
+  const x = c.getContext('2d', MANUAL ? { willReadFrequently: true } : undefined); x.setTransform(dpr, 0, 0, dpr, 0, 0); cvs[id] = { c, x, w, h };
 }
 const ids = ['cMid', 'cObi', 'cQuote', 'cLag', 'cAnat', 'cHist'];
 function fitAll() { ids.forEach(fit); S.dirty = true; }
@@ -141,13 +159,15 @@ function renderStrip(f) {
 }
 $('strip').addEventListener('click', e => { const b = e.target.closest('.pill'); if (b) { S.sel = b.dataset.k; S.dirty = true; } });
 
+const fmtAge = ms => ms < 1000 ? `${ms.toFixed(0)} ms` : ms < 60000 ? `${(ms / 1000).toFixed(1)} s` : `${(ms / 60000).toFixed(1)} min`;
 function setChips(cls, glyph, text) { document.querySelectorAll('[data-chip]').forEach(ch => { ch.className = 'chip ' + cls; ch.textContent = `${glyph} ${text}`; }); }
 function renderChrome(f, s, w) {
-  const cb = $('connBadge'); cb.className = 'badge ' + (S.connected ? 'good' : 'critical'); $('connText').textContent = S.connected ? 'Live' : (S.everConnected ? 'Disconnected · numbers frozen' : 'Connecting…');
+  const cb = $('connBadge'); cb.className = 'badge ' + (S.connected ? 'good' : 'critical'); $('connText').textContent = S.replay ? 'Replay · recorded, not live' : S.connected ? 'Live' : (S.everConnected ? 'Disconnected · numbers frozen' : 'Connecting…');
   if (w) { const [, cls, word, glyph] = ageClass(w.derived_age_ms); $('ageBadge').className = 'badge ' + cls; $('ageText').textContent = `${S.sel} · ${word} · ${w.derived_age_ms.toFixed(0)} ms old`; setChips(cls, glyph, `${w.derived_age_ms.toFixed(0)} ms · ${word}`); }
+  else if (s && s.last_msg_age_ms != null) { const [, cls, word, glyph] = ageClass(s.last_msg_age_ms); $('ageBadge').className = 'badge ' + cls; $('ageText').textContent = `${S.sel} · ${word} · last update ${fmtAge(s.last_msg_age_ms)} ago`; setChips(cls, glyph, `${fmtAge(s.last_msg_age_ms)} · ${word}`); }
   else { $('ageBadge').className = 'badge'; $('ageText').textContent = 'no data yet'; setChips('', '○', 'no data'); }
   $('tLag').textContent = f.lag.total == null ? 'n/a' : f.lag.total; $('tLag').title = f.lag.ok ? '' : (f.lag.error || '');
-  $('tRate').textContent = w ? w.n : '—'; $('tDrop').textContent = f.client.drops;
+  $('tRate').textContent = w ? w.n : (s ? 0 : '—'); $('tDrop').textContent = f.client.drops;
   if (w) { $('heroMid').textContent = w.mid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     $('heroSub').textContent = `mid · ${QUOTE[S.sel.split('/')[0]] || '?'} · ${S.sel}`;
     $('spreadNote').textContent = `spread ${w.spread_abs.toFixed(2)} · ` + (w.effective_spread == null ? 'effective spread blank: no recent trade' : `effective spread ${w.effective_spread.toFixed(2)}`); }
@@ -207,7 +227,7 @@ function renderCal(f) {
   else if (c.status === 'expired') { head.textContent = 'Calibration expired.'; body.textContent = `The last passing self-test is ${Math.round(c.age_s)} s old. Latency figures are unverified until the next one.`; cb.classList.add('warning'); ct.textContent = 'Calibration expired · unverified'; }
   else if (c.status === 'inconclusive') { head.textContent = 'Inconclusive: not enough samples.'; body.textContent = (L && L.reason) || ''; cb.classList.add('warning'); ct.textContent = 'Calibration inconclusive'; }
   else { head.textContent = L && L.found === null && /not sure/.test(L.reason || '') ? 'Failed. We were not sure where the delay was.' : 'Failed. We did not find the delay we hid.'; body.textContent = (L ? L.reason + (L.sham_ok ? '' : ' | sham: ' + L.sham_reason) + '.' : '') + ' Treat latency figures as unverified.'; cb.classList.add('critical'); ct.textContent = 'Calibration failed'; }
-  $('calAgo').textContent = c.age_s == null ? '' : `last run ${Math.round(c.age_s)} s ago`; $('btnTest').disabled = c.status === 'running';
+  $('calAgo').textContent = c.age_s == null ? '' : `last run ${Math.round(c.age_s)} s ago`; $('btnTest').disabled = c.status === 'running' || !!S.replay;
   $('induced').hidden = !f.induced;
   const sl = f.slo, t = $('tSlo'), unv = c.status !== 'valid';
   t.textContent = !sl || sl.met == null ? '—' : unv ? 'Unverified' : sl.met ? 'Met' : 'Breached'; t.style.color = unv && sl && sl.met != null ? 'var(--status-warning)' : sl && sl.met === false ? 'var(--status-critical)' : '';
@@ -233,9 +253,9 @@ function renderTob(s) {
 }
 function renderFeeds(f) {
   const t = $('feeds'); t.textContent = ''; const h = t.insertRow(); ['Venue', 'Updates/s', 'Last msg', 'State'].forEach(x => h.append(Object.assign(document.createElement('th'), { textContent: x })));
-  for (const [k, s] of Object.entries(f.series)) { const w = s.window_1s, r = t.insertRow(); const cls = w ? ageClass(w.pulse_consume_age_ms)[1] : 'critical';
+  for (const [k, s] of Object.entries(f.series)) { const w = s.window_1s, r = t.insertRow(); const lm = s.last_msg_age_ms, cls = w ? ageClass(w.pulse_consume_age_ms)[1] : lm != null ? ageClass(lm)[1] : 'critical';
     const c0 = r.insertCell(); const d = el('i', 'sdot ' + (cls === 'good' ? '' : cls === 'warning' ? 'warning' : 'critical')); c0.append(d, document.createTextNode(k));
-    r.insertCell().textContent = w ? w.n : '—'; r.insertCell().textContent = w ? `${w.pulse_consume_age_ms.toFixed(0)} ms ago` : 'no data'; r.insertCell().textContent = w ? ageClass(w.pulse_consume_age_ms)[2] : 'no data'; }
+    r.insertCell().textContent = w ? w.n : (lm != null ? 0 : '—'); r.insertCell().textContent = w ? `${w.pulse_consume_age_ms.toFixed(0)} ms ago` : lm != null ? `${fmtAge(lm)} ago` : 'no data'; r.insertCell().textContent = w ? ageClass(w.pulse_consume_age_ms)[2] : lm != null ? ageClass(lm)[2] : 'no data'; }
   $('sbConn').innerHTML = ''; for (const [k, s] of Object.entries(f.series)) { const w = s.window_1s; $('sbConn').append(el('span', '', `${k} ${w ? w.n : 0}/s   `)); }
 }
 const ICON = { info: 'ℹ', good: '✓', warning: '▲', serious: '■', critical: '✕' };
@@ -263,4 +283,4 @@ setInterval(() => { $('sbClock').textContent = new Date().toTimeString().slice(0
   fetch('/debug/stats', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ raf_fps: +fps.toFixed(1), draws: S.draws, msgs: S.msgs, render_ms_p50: pct(S.costs, 50), render_ms_p99: p99,
     render_ms_max: S.costs.length ? Math.max(...S.costs) : null, seq_missed: S.seqGaps, dpr: window.devicePixelRatio, w: innerWidth, h: innerHeight, connected: S.connected, at: Date.now() }) }).catch(() => {});
   if (dt > 10) { S.rafTicks = 0; tick0 = performance.now(); } }, 1000);
-fitAll(); logEv('info', 'Page loaded'); renderLog(); connect(); requestAnimationFrame(loop);
+fitAll(); logEv('info', 'Page loaded'); renderLog(); if (REPLAY_URL) { startReplay(REPLAY_URL); $('btnTest').disabled = true; $('btnTest').title = 'Replays cannot run a self-test'; document.querySelector('.statusbar span:last-child').textContent = 'REPLAY · recorded data, not live'; } else connect(); requestAnimationFrame(loop);

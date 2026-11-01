@@ -122,3 +122,14 @@ def test_slo_histogram_counts_every_record_once_in_the_right_bucket():
     assert h["counts"][e.index(0)] == 1 and h["counts"][e.index(5)] == 2      # 2 ms -> [0,5); 7,7 -> [5,10)
     assert h["counts"][e.index(80)] == 1 and h["counts"][e.index(100)] == 1   # 99 -> [80,100); exactly 100 -> [100,150)
     assert h["counts"][-1] == 1                                                # 450 -> open-ended
+
+
+def test_outage_reads_as_growing_age_not_no_data():
+    a = Aggregator()
+    a.add_derived(rec(10.1))
+    f = frame(a, 40.1)                                          # 30 s of silence: the 1 s window is empty
+    ser = f["series"][f"{V}/{S}"]
+    assert ser["window_1s"] is None
+    assert ser["last_msg_age_ms"] == 30000.0                    # the page can say "last update 30 s ago"
+    assert f["pulse_age_ms"] == 30000.0
+    assert frame(Aggregator(), 40.1)["pulse_age_ms"] is None    # nothing ever received is still a true null

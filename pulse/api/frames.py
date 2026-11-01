@@ -41,9 +41,12 @@ def build_frame(agg: Aggregator, seq: int, now_wall_ns: int, mono_to_wall, lag: 
         win = agg.window(venue, symbol, now_wall_ns - NS)
         bins = agg.recent_bins(venue, symbol, HIST_BINS)
         entry: dict = {"window_1s": None, "bins": None, "trades": []}
+        lastc = agg.last_consume_wall_ns(venue, symbol)       # newest record EVER: an outage must read as growing age, never as "no data yet"
+        entry["last_msg_age_ms"] = None if lastc is None else round(max(0.0, (now_wall_ns - lastc) / 1e6), 1)
+        if lastc is not None:
+            newest_consume = lastc if newest_consume is None else max(newest_consume, lastc)
         if win:
             last = win[-1]
-            newest_consume = last.consume_wall_ns if newest_consume is None else max(newest_consume, last.consume_wall_ns)
             s1 = [(r.derived_at_ns - r.recv_ts_ns) / 1e6 for r in win]          # producer recv -> processor derived
             s2 = [(r.consume_mono_ns - r.derived_at_ns) / 1e6 for r in win]     # processor derived -> Pulse consumed
             entry["window_1s"] = {

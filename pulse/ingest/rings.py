@@ -276,6 +276,11 @@ class Aggregator:
         k = self._keys.get((venue, symbol))
         return list(k.trades)[-n:] if k else []
 
+    def last_consume_wall_ns(self, venue: str, symbol: str) -> Optional[int]:
+        """Wall time Pulse consumed the newest derived record EVER seen for this key (None only if none yet)."""
+        k = self._keys.get((venue, symbol))
+        return k.raw[-1].consume_wall_ns if k and k.raw else None
+
     def recent_bins(self, venue: str, symbol: str, n: int) -> list[Bin]:
         k = self._keys.get((venue, symbol))
         return list(k.bins)[-n:] if k else []

@@ -27,7 +27,7 @@ async def main():
             if r.get("method")=="Runtime.exceptionThrown": msgs.append(("EXCEPTION",r["params"]["exceptionDetails"].get("exception",{}).get("description","")[:300]))
         await call("Runtime.enable"); await call("Page.enable")
         await call("Emulation.setDeviceMetricsOverride",width=W,height=1250,deviceScaleFactor=1,mobile=False)
-        await call("Page.navigate",url="http://127.0.0.1:8765/")
+        await call("Page.navigate",url=os.environ.get("PROBE_URL", "http://127.0.0.1:8765/"))
         t0=time.time()
         while time.time()-t0<SECS:
             try: ev(json.loads(await asyncio.wait_for(ws.recv(),timeout=1)))
