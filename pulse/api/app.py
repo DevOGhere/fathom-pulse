@@ -7,10 +7,11 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from pulse.api import features as fv
 from pulse.api.hub import Hub
 
 WEB = Path(__file__).resolve().parent.parent / "web"
@@ -62,6 +63,28 @@ async def calibrate(stage: int = 0):
 @app.get("/calibration")
 async def calibration():
     return hub.calibrator.snapshot()
+
+
+def _fv_bins(venue: str, symbol: str):
+    if (venue, symbol) not in hub.agg.keys():
+        raise HTTPException(404, f"unknown venue/symbol; known: {[f'{v}/{s}' for v, s in hub.agg.keys()]}")
+    return hub.agg.bins(venue, symbol)
+
+
+@app.get("/features/latest")
+async def features_latest(venue: str, symbol: str):
+    """pulse.fv.1: the most recent CLOSED 1 s bin as a feature vector."""
+    v = fv.latest(_fv_bins(venue, symbol), int(time.time() * 1000))
+    if v is None:
+        raise HTTPException(404, "no closed bin yet")
+    return v
+
+
+@app.get("/features/window")
+async def features_window(venue: str, symbol: str, from_ms: int | None = None, to_ms: int | None = None):
+    """pulse.fv.1: closed bins with close in (from_ms, to_ms], oldest first. Ring only (<= 5 min); identical shape to /latest."""
+    return {"schema_version": fv.SCHEMA_VERSION, "retention": "ring<=300x1s",
+            "vectors": fv.window(_fv_bins(venue, symbol), int(time.time() * 1000), from_ms, to_ms)}
 
 
 @app.get("/health")

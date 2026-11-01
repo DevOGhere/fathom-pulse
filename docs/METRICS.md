@@ -50,3 +50,7 @@ Every number on screen has a definition here and a rule for what it is NOT. Item
 - First live reading (1416 records): pipeline p99 36.6 ms, tick wait p50 52 / p99 98 ms, end to frame p99 122.8 ms.
 - **Calibration verdicts changed after seeing live failures (post-hoc, disclosed):** (1) detection needs delta >= `MIN_EFFECT_MS` (5 ms) as well as > 3 se: a 2.1 ms / 3.3 se upstream drift was a sham false alarm. (2) A sham that finds movement means the system was not steady (upstream stage 1 moved +11 to +16 ms during a quiet window, twice in ~10 min); that is reported **inconclusive** and retried after 20 s, not "failed". The gate reports every retry.
 - Not measured / not claimed: network time from Pulse to the browser; Pulse is ms-class by design (Python, Kafka hop, 10 Hz cadence), not a µs system.
+
+## pulse.fv.1 (`/features/latest`, `/features/window`) — 2026-11-01
+
+Spec and rules live in the docstring of `pulse/api/features.py`; the field list is frozen by `tests/test_features.py` (GOLDEN). Closed 1 s bins only; latest and window share one shape; empty seconds and the effective-spread sentinel are null; `empty` and `induced` flags let a consumer drop them. Provenance: `derived_lag_ms_p50` is the median per-record pipeline latency of that second (stages 1-3, tick wait excluded), `pulse_age_ms` is `now - bin close` at request time. **Retention is the in-memory ring only (5 min / 300 bins), not the 30 min + ClickHouse in the original plan**: `/history` and the ClickHouse stitch are an extension. There is no model in Pulse; FathomFlow consumes this.
