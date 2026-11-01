@@ -64,7 +64,7 @@ function fit(id) {
   c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c.style.height = h + 'px';
   const x = c.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0); cvs[id] = { c, x, w, h };
 }
-const ids = ['cMid', 'cObi', 'cQuote', 'cLag', 'cAnat'];
+const ids = ['cMid', 'cObi', 'cQuote', 'cLag', 'cAnat', 'cHist'];
 function fitAll() { ids.forEach(fit); S.dirty = true; }
 new ResizeObserver(fitAll).observe(document.body);
 
@@ -106,6 +106,21 @@ function drawTimeline(now) {
   const lh = S.lagHist.filter(p => p.lag != null); if (lh.length < 2) return emptyChart(g2, S.frame.lag.ok ? 'Waiting for lag samples…' : 'Lag unavailable: ' + (S.frame.lag.error || 'unknown'));
   const lmax = Math.max(50, ...lh.map(p => p.lag)); axes(g2, 0, lmax, 3, v => v.toFixed(0));
   const y = g2.x; y.strokeStyle = C.sec; y.lineWidth = 2; y.lineJoin = 'round'; y.beginPath(); lh.forEach((p, i) => { const X = px(g2, p.t, now), Y = py(g2, p.lag, 0, lmax); i ? y.lineTo(X, Y) : y.moveTo(X, Y); }); y.stroke();
+}
+
+function drawHist() {
+  const g = cvs.cHist, sl = S.frame && S.frame.slo, h = sl && sl.hist;
+  if (!h || !sl.n) return emptyChart(g, 'Waiting for records…');
+  const x = g.x, w = g.w, ht = g.h, L = 34, R = 8, T = 8, B = 20, n = h.counts.length, cmax = Math.max(1, ...h.counts), bw = (w - L - R) / n;
+  x.clearRect(0, 0, w, ht); x.font = '11px ui-monospace, monospace'; x.textBaseline = 'middle';
+  x.strokeStyle = C.grid; x.fillStyle = C.muted; x.textAlign = 'right';
+  for (const f of [0, 0.5, 1]) { const y = Math.round(T + (ht - T - B) * (1 - f)) + .5; x.beginPath(); x.moveTo(L, y); x.lineTo(w - R, y); x.stroke(); x.fillText(Math.round(cmax * f), L - 4, y); }
+  const tgt = h.edges_ms.indexOf(sl.target_ms);
+  h.counts.forEach((c, i) => { const bh = (ht - T - B) * c / cmax; x.fillStyle = i >= tgt && tgt >= 0 ? css('--status-serious') : C.seq; x.fillRect(L + i * bw + 1, ht - B - bh, Math.max(1, bw - 2), bh); });
+  x.fillStyle = C.muted; x.textAlign = 'center';
+  h.edges_ms.forEach((e, i) => { if (i % 2 === 0 || i === n - 1) x.fillText(i === n - 1 ? e + '+' : e, L + i * bw + bw / 2, ht - 8); });
+  if (tgt >= 0) { const X = Math.round(L + tgt * bw) + .5; x.strokeStyle = css('--status-serious'); x.setLineDash([4, 3]); x.beginPath(); x.moveTo(X, T); x.lineTo(X, ht - B); x.stroke(); x.setLineDash([]); }
+  $('histNote').textContent = `ms per record, ${sl.n} records · p99 ${sl.p99_ms} ms · target ${sl.target_ms} ms (dashed). Bars right of the line break the target. Tick wait (≈${sl.tick_wait_p50_ms} ms median) is not included.`;
 }
 
 // ---------- DOM panels ----------
@@ -233,7 +248,7 @@ let lastStrip = 0;
 function render() {
   const f = S.frame, t0 = performance.now(); if (!f) { renderChrome({ lag: {}, client: { drops: 0 } }, null, null); return; }
   const s = sel(), w = s && s.window_1s, now = f.ts_ms;
-  renderChrome(f, s, w); drawMid(now); drawObi(now); drawTimeline(now); drawAnat(now); renderCal(f); renderDq(f); renderTob(s); renderFeeds(f);
+  renderChrome(f, s, w); drawMid(now); drawObi(now); drawTimeline(now); drawAnat(now); drawHist(); renderCal(f); renderDq(f); renderTob(s); renderFeeds(f);
   if (t0 - lastStrip > 900 || !$('strip').children.length) { renderStrip(f); lastStrip = t0; }
   if (S.logDirty || (f.events && f.events.length !== S.lastEv)) { S.lastEv = f.events ? f.events.length : 0; renderLog(); }
   $('sbSeq').textContent = `frame #${f.seq}` + (S.seqGaps ? ` · ${S.seqGaps} missed` : '');

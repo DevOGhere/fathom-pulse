@@ -17,6 +17,7 @@ from pulse.ingest.rings import NS, Aggregator
 SCHEMA_VERSION = 1
 HIST_BINS = 60
 TRADES_IN_FRAME = 12
+HIST_EDGES_MS = (0, 5, 10, 15, 20, 30, 40, 60, 80, 100, 150, 200)    # bucket i = [edges[i], edges[i+1]); the last is open-ended
 SLO_TARGET_MS = 100.0     # p99 of per-record PIPELINE total (recv -> ready for a frame, tick wait excluded) over 60 s
 
 
@@ -88,7 +89,11 @@ def build_frame(agg: Aggregator, seq: int, now_wall_ns: int, mono_to_wall, lag: 
     live = [e for v, sy in agg.keys() for e in agg.stage_samples(v, sy, now_wall_ns - 60 * NS) if not e[4] and e[5] is not None]
     tots = [e[1] + e[2] + e[3] for e in live]
     p99 = _pct(tots, 99)
+    counts = [0] * len(HIST_EDGES_MS)
+    for v in tots:
+        counts[max(0, sum(1 for e in HIST_EDGES_MS[1:] if v >= e))] += 1
     slo = {"target_ms": SLO_TARGET_MS, "window_s": 60, "n": len(tots), "p99_ms": p99,
+           "hist": {"edges_ms": list(HIST_EDGES_MS), "counts": counts},
            "met": None if p99 is None else p99 < SLO_TARGET_MS,
            "tick_wait_p50_ms": _pct([e[5] for e in live], 50), "tick_wait_p99_ms": _pct([e[5] for e in live], 99),
            "end_to_frame_p99_ms": _pct([e[1] + e[2] + e[3] + e[5] for e in live], 99)}

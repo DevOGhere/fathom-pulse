@@ -107,3 +107,18 @@ def test_slo_excludes_scheduled_tick_wait_but_reports_it():
     assert slo["tick_wait_p50_ms"] == 79.0
     assert slo["p99_ms"] == round(3.0 + 5.0 + e[3], 3)      # s1 + s2 + s3 (consume -> ready) = pipeline only
     assert slo["end_to_frame_p99_ms"] > slo["p99_ms"] + 78  # the full figure stays visible
+
+
+def test_slo_histogram_counts_every_record_once_in_the_right_bucket():
+    a = Aggregator()
+    for i, d_ms in enumerate((2, 7, 7, 99, 100, 450)):       # pipeline totals = s1 + s2 + s3; s1 = 0, s3 ~ 0 here
+        a.add_derived(rec(10.1 + i * 0.01, recv=0, derived=0, consume_mono=int(d_ms * 1e6)))
+    a.record_stage3(10**12)
+    for e in a._keys[(V, S)].stages:
+        e[3], e[5] = 0.0, 0.0                              # stage 3 uses the real clock; pin it so only s2 = d_ms counts
+    h = frame(a, 10.5)["slo"]["hist"]
+    assert sum(h["counts"]) == 6
+    e = h["edges_ms"]
+    assert h["counts"][e.index(0)] == 1 and h["counts"][e.index(5)] == 2      # 2 ms -> [0,5); 7,7 -> [5,10)
+    assert h["counts"][e.index(80)] == 1 and h["counts"][e.index(100)] == 1   # 99 -> [80,100); exactly 100 -> [100,150)
+    assert h["counts"][-1] == 1                                                # 450 -> open-ended

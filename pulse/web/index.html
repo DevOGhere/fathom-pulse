@@ -37,6 +37,11 @@
         <div class="pin" id="pin">Click a bar to pin one second and read it stage by stage.</div>
       </div>
       <div class="card">
+        <h3>Latency distribution</h3>
+        <canvas id="cHist" data-h="130"></canvas>
+        <div class="empty" id="histNote">Per-record pipeline latency (stages 1-3, tick wait excluded), last 60 s, both venues, calibration seconds excluded.</div>
+      </div>
+      <div class="card">
         <h3>Pipeline vitals</h3>
         <div class="tiles">
           <div class="tile"><div class="l">Processor lag</div><div class="v num" id="tLag">—</div><div class="s">msgs behind (fathom-processor)</div></div>
