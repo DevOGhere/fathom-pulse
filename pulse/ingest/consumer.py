@@ -117,7 +117,12 @@ class IngestConsumer:
             while not self._stop.is_set():
                 # consume() blocks for the FULL timeout to fill a batch, so a 50 ms timeout added ~25 ms of Pulse-made wait to stage 2.
                 # 5 ms, constant (also while injecting, so a test never changes the natural component it is compared against).
-                msgs = c.consume(num_messages=500, timeout=0.005)
+                try:
+                    msgs = c.consume(num_messages=500, timeout=0.005)
+                except Exception:                              # a dead poll thread is silent; count it and keep going
+                    self.errors["consume"] += 1
+                    time.sleep(0.1)
+                    continue
                 if time.monotonic() - last_sample > 5:
                     self.bridge.sample()
                     last_sample = time.monotonic()
@@ -125,7 +130,7 @@ class IngestConsumer:
                 arrival = time.monotonic_ns()
                 batch = []
                 for m in msgs:
-                    if d and m.topic().startswith("market.derived."):
+                    if d and not m.error() and m.topic().startswith("market.derived."):   # error msgs have topic() None
                         seq += 1
                         heapq.heappush(held, (arrival + d, seq, m, arrival))
                     else:
