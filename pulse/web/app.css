@@ -231,3 +231,14 @@
   .ops .rk-bar i.on[data-sev="good"] { background: var(--status-good); } .ops .rk-bar i.on[data-sev="warning"] { background: var(--status-warning); } .ops .rk-bar i.on[data-sev="serious"] { background: var(--status-serious); } .ops .rk-bar i.on[data-sev="critical"] { background: var(--status-critical); }
   .ops .rk-pin { position: absolute; left: 50%; top: -9px; width: 0; height: 0; transform: translateX(-50%); border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 7px solid var(--ink-primary); }
   .ops .rk-lbl { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 6px; font-size: 11px; color: var(--ink-muted); text-align: center; } .ops .rk-lbl .cur { color: var(--ink-primary); font-weight: 650; }
+
+  /* ---- Inspector (Detail): a paused second opened to its records ---- */
+  .insp { margin-top: 12px; border-top: 1px solid rgba(255,255,255,.1); padding-top: 12px; }
+  .insp .ih { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; } .insp .ih b { color: var(--status-warning); } .insp .ih .btn { margin-left: auto; }
+  .insp .kvs { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px 14px; margin-bottom: 12px; }
+  .insp .kv { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid rgba(255,255,255,.06); padding: 3px 0; font-size: 12px; } .insp .kv .k { color: var(--ink-muted); } .insp .kv .v { color: var(--ink-primary); }
+  .insp .irec { max-height: 260px; overflow: auto; font-size: 12px; } .insp .muted { color: var(--ink-muted); font-size: 12px; margin-bottom: 6px; }
+  .insp table.rec { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; } .insp table.rec th { position: sticky; top: 0; background: rgba(15,18,21,.98); color: var(--ink-muted); font-weight: 500; text-align: right; padding: 4px 6px; font-size: 11px; }
+  .insp table.rec td { text-align: right; padding: 3px 6px; border-top: 1px solid rgba(255,255,255,.05); } .insp table.rec th:first-child, .insp table.rec td:first-child { text-align: left; } .insp table.rec tr:hover td { background: rgba(255,255,255,.06); }
+
+  

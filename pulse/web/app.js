@@ -40,13 +40,13 @@ async function startReplay(url) {
         sha = async t => [...new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(t)))].map(x => x.toString(16).padStart(2, '0')).join(''),
         each = await Promise.all(parts.map(sha)); return JSON.stringify({ all: await sha(each.join()), parts: Object.fromEntries(names.map((n, i) => [n, each[i].slice(0, 12)])), text: Object.fromEntries(names.slice(6).map((n, i) => [n, parts[i + 6].slice(0, 160)])) }); } };
   if (MANUAL) return;
-  let i = 0; const t = setInterval(() => { if (i >= frames.length) { i = 0; reset(); logEv('info', 'Recording ended; starting again'); } feed(i++); }, 100);
+  let i = 0; const t = setInterval(() => { if (S.paused) return; if (i >= frames.length) { i = 0; reset(); logEv('info', 'Recording ended; starting again'); } feed(i++); }, 100);
 }
 function connect() {
   ws = new WebSocket(`ws://${location.host}/stream`);
   ws.onopen = () => { S.connected = true; backoff = 500; S.tail = {}; S.lagHist = []; S.lastSeq = 0;
     logEv('good', S.everConnected ? 'Reconnected; history rebuilt from the frame' : 'Connected to Pulse'); S.everConnected = true; S.dirty = true; };
-  ws.onmessage = e => { const f = JSON.parse(e.data); S.msgs++; ingest(f); };
+  ws.onmessage = e => { const f = JSON.parse(e.data); S.msgs++; if (S.paused) { S.latest = f; S.held = (S.held || 0) + 1; return; } ingest(f); };
   ws.onclose = () => { if (S.connected) logEv('critical', 'Lost the Pulse stream. Numbers are frozen, not current.'); S.connected = false; S.dirty = true;
     setTimeout(connect, backoff); backoff = Math.min(backoff * 2, 5000); };
   ws.onerror = () => ws.close();
@@ -167,7 +167,7 @@ $('strip').addEventListener('click', e => { const b = e.target.closest('.pill');
 const fmtAge = ms => ms < 1000 ? `${ms.toFixed(0)} ms` : ms < 60000 ? `${(ms / 1000).toFixed(1)} s` : `${(ms / 60000).toFixed(1)} min`;
 function setChips(cls, glyph, text) { document.querySelectorAll('[data-chip]').forEach(ch => { ch.className = 'chip ' + cls; ch.textContent = `${glyph} ${text}`; }); }
 function renderChrome(f, s, w) {
-  const cb = $('connBadge'); cb.className = 'badge ' + (S.connected ? 'good' : 'critical'); $('connText').textContent = S.replay ? 'Replay · recorded, not live' : S.connected ? 'Live' : (S.everConnected ? 'Disconnected · numbers frozen' : 'Connecting…');
+  const cb = $('connBadge'); cb.className = 'badge ' + (S.connected ? 'good' : 'critical'); $('connText').textContent = S.paused ? 'Paused · inspecting' : S.replay ? 'Replay · recorded, not live' : S.connected ? 'Live' : (S.everConnected ? 'Disconnected · numbers frozen' : 'Connecting…');
   if (w) { const [, cls, word, glyph] = ageClass(w.derived_age_ms); $('ageBadge').className = 'badge ' + cls; $('ageText').textContent = `${S.sel} · ${word} · ${w.derived_age_ms.toFixed(0)} ms old`; setChips(cls, glyph, `${w.derived_age_ms.toFixed(0)} ms · ${word}`); }
   else if (s && s.last_msg_age_ms != null) { const [, cls, word, glyph] = ageClass(s.last_msg_age_ms); $('ageBadge').className = 'badge ' + cls; $('ageText').textContent = `${S.sel} · ${word} · last update ${fmtAge(s.last_msg_age_ms)} ago`; setChips(cls, glyph, `${fmtAge(s.last_msg_age_ms)} · ${word}`); }
   else { $('ageBadge').className = 'badge'; $('ageText').textContent = 'no data yet'; setChips('', '○', 'no data'); }
@@ -215,9 +215,31 @@ $('cAnat').addEventListener('pointermove', e => { const h = hitAt(e), s = sel();
     const b = document.createElement('b'); b.className = 'num'; b.textContent = val == null ? (k === 3 ? 'n/a' : '—') : val.toFixed(1) + ' ms'; r.append(l, b); tipEl.append(r); });
   tipEl.style.display = 'block'; tipEl.style.left = Math.min(e.clientX + 14, innerWidth - 300) + 'px'; tipEl.style.top = (e.clientY + 14) + 'px'; });
 $('cAnat').addEventListener('pointerleave', () => { tipEl.style.display = 'none'; });
-$('cAnat').addEventListener('click', e => { const h = hitAt(e), s = sel(), pin = $('pin'); if (!h || !s) { S.pinned = null; pin.textContent = 'Click a bar to pin one second and read it stage by stage.'; S.dirty = true; return; }
+$('cAnat').addEventListener('click', e => { const h = hitAt(e), s = sel(), pin = $('pin'); if (!h || !s) { resumeLive(); S.pinned = null; S.dirty = true; return; }
   S.pinned = s.bins.start_s[h.i]; const st = s.bins.stages, p = 'p' + S.pct; const tot = st['s1_' + p][h.i] + st['s2_' + p][h.i] + st['s3_' + p][h.i];
-  pin.textContent = `Pinned. ${S.pct === 99 ? 'P99' : 'P50'} server total ${tot.toFixed(1)} ms (stages 1-3, before the wait for the next 10 Hz frame, median ${st['tw_p50'][h.i] == null ? '—' : st['tw_p50'][h.i].toFixed(0)} ms). ${attribution(s, h.i)}${s.bins.induced[h.i] ? ' This second was part of a self-test, so the extra time is deliberate.' : ''}`; S.dirty = true; });
+  pin.textContent = `Pinned. ${S.pct === 99 ? 'P99' : 'P50'} server total ${tot.toFixed(1)} ms (stages 1-3, before the wait for the next 10 Hz frame, median ${st['tw_p50'][h.i] == null ? '—' : st['tw_p50'][h.i].toFixed(0)} ms). ${attribution(s, h.i)}${s.bins.induced[h.i] ? ' This second was part of a self-test, so the extra time is deliberate.' : ''}`; S.dirty = true; openInspector(h.i); });
+// ---------- Inspector: click a bar -> charts pause, every record of that second opens (live data keeps arriving behind the pause) ----------
+function resumeLive() { if (!S.paused) return; S.paused = false; S.pinned = null; $('insp').hidden = true; $('pin').textContent = 'Click a bar to pin one second: the charts pause and every record in it opens below.';
+  if (S.latest) { S.tail = {}; S.lagHist = []; S.lastSeq = 0; ingest(S.latest); } S.latest = null; S.held = 0; S.dirty = true; }
+const kv = (box, k, v) => { const d = el('div', 'kv'); d.append(el('span', 'k', k), el('span', 'v num', v)); box.append(d); };
+const f1 = v => (v == null ? '—' : v.toFixed(v < 1 ? 3 : 1)), hms = ms => new Date(ms).toTimeString().slice(0, 8) + '.' + String(Math.floor(ms % 1000)).padStart(3, '0');
+async function openInspector(i) {
+  const s = sel(), box = $('insp'), sec = s.bins.start_s[i], b = s.bins, st = b.stages; S.paused = true; S.pinnedI = i; S.dirty = true; box.hidden = false; box.textContent = '';
+  const head = el('div', 'ih'); head.append(el('b', '', `Paused · ${S.sel} · ${hms(sec * 1000).slice(0, 8)}`), el('span', 'muted', 'Charts are frozen; live data keeps arriving in the background.'));
+  const btn = el('button', 'btn', 'Resume live'); btn.addEventListener('click', resumeLive); head.append(btn); box.append(head);
+  const meta = el('div', 'kvs'); kv(meta, 'Updates', b.n_derived[i]); kv(meta, 'Trades', b.trade_count_1s[i]); kv(meta, 'Mid', b.mid[i] == null ? '—' : b.mid[i].toFixed(2)); kv(meta, 'Microprice', b.microprice[i] == null ? '—' : b.microprice[i].toFixed(2));
+  kv(meta, 'Imbalance', b.obi_top1[i] == null ? '—' : b.obi_top1[i].toFixed(2)); kv(meta, 'Self-test second', b.induced[i] ? 'yes (delay is deliberate)' : 'no');
+  for (const [k, n] of [['s1', '1 Fathom'], ['s2', '2 Hand-off'], ['s3', '3 Pulse'], ['tw', 'Refresh wait'], ['tot', 'Total 1-3']]) kv(meta, `${n} P50 / P99`, `${f1(st[k + '_p50'][i])} / ${f1(st[k + '_p99'][i])} ms`);
+  box.append(meta); const tb = el('div', 'irec', 'Loading this second’s records…'); box.append(tb);
+  try {
+    const [v, sy] = S.sel.split('/'), r = await fetch(`/tick?venue=${encodeURIComponent(v)}&symbol=${encodeURIComponent(sy)}&sec=${sec}`); if (!r.ok) throw new Error((await r.json()).detail || r.status);
+    const d = await r.json(); tb.textContent = ''; if (!d.records.length) { tb.textContent = 'No records in this second.'; return; }
+    const t = document.createElement('table'); t.className = 'rec'; const hr = t.insertRow(); ['Time (Pulse)', 'Kafka ts', '1 recv→derived', '2 derived→Pulse', '3 →ready', 'Refresh wait', 'Mid', 'Microprice', 'Imbal.', 'Spread eff.', 'Test', 'Kafka partition:offset', 'Bytes', 'Schema', 'recv_ts_ns (producer)', 'derived_at_ns (processor)'].forEach(x => hr.append(Object.assign(document.createElement('th'), { textContent: x })));
+    for (const x of d.records) { const row = t.insertRow(); [hms(x.t_ms), hms(x.kafka_ms), f1(x.s1), f1(x.s2), f1(x.s3), f1(x.tw), x.mid.toFixed(2), x.microprice.toFixed(2), x.obi1.toFixed(2), x.eff_spread == null ? '—' : x.eff_spread.toFixed(2), x.induced ? 'yes' : '', `${x.partition}:${x.offset}`, x.size, x.schema_id == null ? '—' : '#' + x.schema_id, x.recv_ns, x.derived_ns].forEach(c => row.insertCell().textContent = c); }
+    tb.append(el('div', 'muted', `Topic ${d.topic}. ${d.records.length} records. Stage columns in ms (differences of host monotonic stamps). ${d.note}.`), t);
+  } catch (e) { tb.textContent = S.replay ? 'Per-record rows need the live server; this is a recording. The second’s own figures are above.' : `Per-record rows unavailable: ${e.message}. The second’s own figures are above.`; }
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.paused) resumeLive(); });
 $('pctSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.pct = +b.dataset.p; document.querySelectorAll('#pctSeg button').forEach(x => x.setAttribute('aria-pressed', x === b)); S.dirty = true; });
 
 function renderCal(f) {
@@ -460,6 +482,7 @@ function renderOps(f) {
   opsDraw(); if (TIP.el && !TIP.el.hidden && TIP.key !== 'chart') { tipFill(); tipPlace(); }
 }
 function applyMode(mode, persist) {
+  if (S.paused) resumeLive();
   const swap = () => {
     OM.mode = mode; OM.sec = -1; if (persist) localStorage.setItem('pulse.mode', mode);
     const ops = mode === 'ops'; $('ops').hidden = !ops; $('detail').hidden = ops; $('strip').hidden = ops; $('modeSwitch').dataset.mode = mode;

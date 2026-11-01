@@ -162,14 +162,16 @@ class IngestConsumer:
         if self._drop_until_ns and mono < self._drop_until_ns:
             self.induced_drops += 1
             return
-        rec = self._decode(topic, m.value(), m.timestamp()[1], mono, wall, induced)
+        v = m.value()
+        src = (m.partition(), m.offset(), len(v), int.from_bytes(v[1:5], "big") if v[:1] == b"\x00" and len(v) >= 5 else None)
+        rec = self._decode(topic, v, m.timestamp()[1], mono, wall, induced, src)
         if rec is not None:
             self.decoded[topic] += 1
             if induced and arrival_mono_ns:
                 self.inj_actual_ms.append((mono - arrival_mono_ns) / 1e6)     # ground truth: how long we REALLY held it
             batch.append(rec)
 
-    def _decode(self, topic: str, value: bytes, kafka_ts_ms: int, mono: int, wall: int, induced: bool = False):
+    def _decode(self, topic: str, value: bytes, kafka_ts_ms: int, mono: int, wall: int, induced: bool = False, src: tuple = (-1, -1, 0, None)):
         try:
             idx = wire.peek_index(value)
             if topic.startswith("market.derived."):
@@ -180,7 +182,7 @@ class IngestConsumer:
                     self.sample_derived = d
                 eff = d.effective_spread if d.effective_spread != 0.0 else None   # sentinel -> None
                 return DerivedRec(d.venue, d.symbol, d.derived_at_ns, d.recv_ts_ns, mono, wall, kafka_ts_ms,
-                                  d.mid_price, d.microprice, d.obi_top1, d.obi_top5, eff, d.best_bid, d.best_ask, d.best_bid_qty, d.best_ask_qty, induced)
+                                  d.mid_price, d.microprice, d.obi_top1, d.obi_top5, eff, d.best_bid, d.best_ask, d.best_bid_qty, d.best_ask_qty, induced, *src)
             if idx != _IDX_TRADE:        # book snapshots/deltas: skipped before parsing
                 return None
             t = wire.decode(value)

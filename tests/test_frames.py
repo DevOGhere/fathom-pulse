@@ -133,3 +133,18 @@ def test_outage_reads_as_growing_age_not_no_data():
     assert ser["last_msg_age_ms"] == 30000.0                    # the page can say "last update 30 s ago"
     assert f["pulse_age_ms"] == 30000.0
     assert frame(Aggregator(), 40.1)["pulse_age_ms"] is None    # nothing ever received is still a true null
+
+
+def test_records_for_second_returns_each_record_with_its_own_stages():
+    a = Aggregator()
+    a.add_derived(rec(10.1, recv=1_000_000, derived=4_000_000, consume_mono=9_000_000))
+    a.add_derived(rec(10.7, recv=2_000_000, derived=3_000_000, consume_mono=9_500_000))
+    a.add_derived(rec(11.2, recv=1_000_000, derived=2_000_000, consume_mono=3_000_000))
+    a.record_stage3(10**12)
+    rows = a.records_for_second(V, S, 10)
+    assert [round(r["t_ms"]) for r in rows] == [10100, 10700]                      # only second 10, oldest first
+    assert (rows[0]["s1"], rows[0]["s2"]) == (3.0, 5.0) and (rows[1]["s1"], rows[1]["s2"]) == (1.0, 6.5)
+    assert rows[0]["s3"] is not None and rows[0]["tw"] is not None                  # stage 3 and tick wait attached after the frame build
+    assert len(a.records_for_second(V, S, 11)) == 1 and a.records_for_second(V, S, 99) == []
+    assert a.records_for_second("nope", "x", 10) is None
+    assert {"partition", "offset", "size", "schema_id", "recv_ns", "derived_ns"} <= set(rows[0])          # the record's own coordinates ride along

@@ -51,6 +51,10 @@ class DerivedRec(NamedTuple):
     best_bid_qty: float = 0.0
     best_ask_qty: float = 0.0
     induced: bool = False        # True while a calibration delay is being injected at a Pulse stamp site
+    partition: int = -1          # Kafka coordinates of the message this record came from (the real ID: topic + partition + offset)
+    offset: int = -1
+    size: int = 0                # payload bytes on the wire (incl. the 5-byte Confluent header)
+    schema_id: Optional[int] = None   # Confluent schema-registry id from the wire header
 
 
 class TradeRec(NamedTuple):
@@ -184,6 +188,29 @@ class Aggregator:
                     a.tot.append(entry[1] + entry[2] + s3)
                     a.neg += s3 < 0
             k.pending.clear()
+
+    def records_for_second(self, venue: str, symbol: str, sec: int, cap: int = 300) -> Optional[list[dict]]:
+        """Every derived record Pulse consumed in wall second `sec`, oldest first, with its own stage durations (the Inspector's grass-root view).
+        None = unknown venue/symbol. Source is the in-memory raw ring (about the last 5 minutes), so older seconds return []."""
+        k = self._keys.get((venue, symbol))
+        if k is None:
+            return None
+        lo, hi = sec * NS, (sec + 1) * NS
+        ent = {e[0]: e for e in k.stages}                 # consume_wall_ns -> [wall, s1, s2, s3|None, induced, tick_wait|None]
+        out = []
+        for r in k.raw:
+            if lo <= r.consume_wall_ns < hi:
+                e = ent.get(r.consume_wall_ns)
+                out.append({"t_ms": r.consume_wall_ns / 1e6, "kafka_ms": r.kafka_ts_ms,
+                            "s1": (r.derived_at_ns - r.recv_ts_ns) / 1e6, "s2": (r.consume_mono_ns - r.derived_at_ns) / 1e6,
+                            "s3": e[3] if e else None, "tw": e[5] if e else None,
+                            "mid": r.mid, "microprice": r.microprice, "obi1": r.obi_top1, "obi5": r.obi_top5,
+                            "eff_spread": r.effective_spread, "bid": r.best_bid, "ask": r.best_ask, "induced": r.induced,
+                            "partition": r.partition, "offset": r.offset, "size": r.size, "schema_id": r.schema_id,
+                            "recv_ns": r.recv_ts_ns, "derived_ns": r.derived_at_ns, "consume_mono_ns": r.consume_mono_ns})
+                if len(out) >= cap:
+                    break
+        return out
 
     def stage_samples(self, venue: str, symbol: str, since_wall_ns: int, until_wall_ns: Optional[int] = None) -> list[list]:
         """Complete per-record samples (stage 3 known), oldest first. Entries: [wall_ns, s1, s2, s3, induced]."""

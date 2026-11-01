@@ -28,6 +28,15 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="FathomPulse", lifespan=lifespan)
 
 
+@app.middleware("http")
+async def no_stale_assets(request, call_next):
+    """Dev server: the page's own files must never come from a browser cache (a stale app.css hid a whole feature once)."""
+    resp = await call_next(request)
+    if request.url.path == "/" or request.url.path.startswith("/static/"):
+        resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
+
 app.mount("/static", StaticFiles(directory=WEB), name="static")      # tokens.css lives at /static/ds/tokens.css
 _debug_stats: dict = {}
 
@@ -96,6 +105,19 @@ async def features_window(venue: str, symbol: str, from_ms: int | None = None, t
     """pulse.fv.1: closed bins with close in (from_ms, to_ms], oldest first. Ring only (<= 5 min); identical shape to /latest."""
     return {"schema_version": fv.SCHEMA_VERSION, "retention": "ring<=300x1s",
             "vectors": fv.window(_fv_bins(venue, symbol), int(time.time() * 1000), from_ms, to_ms)}
+
+
+@app.get("/tick")
+async def tick(venue: str, symbol: str, sec: int):
+    """Inspector: one closed second's bin plus every record in it with its own stage durations. Ring only (~5 min)."""
+    recs = hub.agg.records_for_second(venue, symbol, sec)
+    if recs is None:
+        raise HTTPException(404, "unknown venue/symbol")
+    b = next((x for x in hub.agg.bins(venue, symbol) if x.start_s == sec), None)
+    if b is None and not recs:
+        raise HTTPException(404, "that second is outside the in-memory window (about the last 5 minutes)")
+    return {"venue": venue, "symbol": symbol, "sec": sec, "topic": f"market.derived.{venue}.{symbol}", "bin": b.to_dict() if b else None, "records": recs,
+            "note": "Pulse wall clock for times; stage durations are differences of host monotonic stamps; records come from the in-memory ring"}
 
 
 @app.get("/health")
