@@ -88,6 +88,8 @@ class Calibrator:
             # watched nothing being injected. The self-test then cannot be trusted either way: inconclusive + retry, NOT "failed".
             unsteady = sham.get("status") == "judged" and not sham["ok"]
             ok = bool(real["ok"] and sham["ok"])
+            if sham.get("status") == "inconclusive":            # say WHY it is inconclusive, not the real run's (possibly fine) reason
+                real["reason"] = f"the quiet (sham) window was too thin to trust: {sham.get('reason')}; the feed is slow or degraded, retrying"
             if unsteady:
                 real["reason"] = f"conditions were not steady: {sham.get('reason')}. Nothing was injected, so this self-test cannot be trusted; retrying"
             rec = {"at_ms": int(time.time() * 1000), "ok": ok, "stage": stage, "d_ms": d_ms, "truth_ms": round(truth or d_ms, 2),
