@@ -37,7 +37,7 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 ## Gates (what "works" means here; all runnable)
 
 ```
-.venv/bin/python -m pytest -q                              # 52 unit/contract tests
+.venv/bin/python -m pytest -q                              # 55 unit/contract tests
 .venv/bin/python -m pulse.api.soak --seconds 120           # frame cadence, drops, backpressure
 .venv/bin/python -m pulse.api.calib_gate --runs 10         # calibration finds the injected delay (live)
 .venv/bin/python -m pulse.api.incident_gate --runs 3       # induced stall is detected, labelled, cleared (live)

@@ -37,7 +37,7 @@ Every number on screen has a definition here and a rule for what it is NOT. Item
 | `pulse_age_ms` (frame) | staleness at Pulse across all venues (newest consume) |
 
 ## Not measured yet
-- Stage 3 `pulse_consume → ws_send` and the browser segment **(Day 4)**. Browser segment is client-local and is never added into the absolute total.
+- Stage 3 = `consume -> ready for a frame` (definition and why: see "Latency SLO" below; the wait for the next 10 Hz frame is reported separately). Stage 4 = server send -> your screen, a client-local estimate that exists only when the page runs on the same host clock; it is never added into the absolute total.
 - Calibration (self-test, confidence, expiry) **(Day 4)**. Until it passes, latency figures are unverified.
 - Exchange-side latency: Binance book events carry `event_ts_ns = 0`, so the exchange stage is null there, never a fake zero.
 - Sequence gaps, depth beyond best bid/ask, incident detection **(Day 6)**.

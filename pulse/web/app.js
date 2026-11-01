@@ -178,7 +178,7 @@ function renderChrome(f, s, w) {
     $('spreadNote').textContent = `spread ${w.spread_abs.toFixed(2)} · ` + (w.effective_spread == null ? 'effective spread blank: no recent trade' : `effective spread ${w.effective_spread.toFixed(2)}`); }
 }
 const STAGE_COL = () => [css('--stage-recv'), css('--stage-derive'), css('--stage-pulse'), css('--stage-ws')];
-const STAGE_NAME = ['1 · producer → derived (Fathom)', '2 · derived → Pulse consumed', '3 · consumed → frame built', '4 · sent → your screen (local estimate)'];
+const STAGE_NAME = ['1 · producer → derived (Fathom)', '2 · derived → Pulse consumed', '3 · consumed → ready for a frame', '4 · sent → your screen (local estimate)'];
 const q = (v, p) => { if (!v || !v.length) return null; const t = [...v].sort((x, y) => x - y); return t[Math.min(t.length - 1, Math.floor(p / 100 * t.length))]; };
 function binStages(s, i) {   // [s1,s2,s3,s4|null] for bin i at the selected percentile
   const st = s.bins.stages, p = 'p' + S.pct, v = [st['s1_' + p][i], st['s2_' + p][i], st['s3_' + p][i]];

@@ -31,7 +31,7 @@
         <div class="legend">
           <span><i style="background:var(--stage-recv)"></i>1 · producer → derived (Fathom)</span>
           <span><i style="background:var(--stage-derive)"></i>2 · derived → Pulse consumed</span>
-          <span><i style="background:var(--stage-pulse)"></i>3 · consumed → frame built (includes the ≤100 ms tick wait)</span>
+          <span><i style="background:var(--stage-pulse)"></i>3 · consumed → ready for a frame (the wait for the next 10 Hz frame is not in the bars)</span>
           <span><i style="background:var(--stage-ws)"></i>4 · sent → your screen (this browser, local estimate)</span>
         </div>
         <div class="pin" id="pin">Click a bar to pin one second and read it stage by stage.</div>

@@ -161,7 +161,7 @@ class Hub:
             nxt += TICK_S                         # absolute deadlines: no drift, a slow tick does not shift the grid
             try:
                 self.seq += 1
-                self.agg.record_stage3(time.monotonic_ns())      # stage 3 = consume -> THIS frame build
+                self.agg.record_stage3(time.monotonic_ns())      # stage 3 (consume -> ready) is known per record; this stamps the tick wait (ready -> THIS frame build)
                 frame = build_frame(self.agg, self.seq, time.time_ns(), self._ic.bridge.mono_to_wall_ns,
                                     self._lag.get_lag(), self.ingest_stats(), self.calibrator.snapshot(), self.events[:12], self.detector.snapshot())
                 for c in self.clients:

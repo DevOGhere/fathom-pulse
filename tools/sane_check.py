@@ -21,6 +21,14 @@ def prom(q):
 
 
 bad = 0
+# An induced stall deliberately drops records at ingest: Pulse never sees them, Prometheus counts them. A rate comparison over a window
+# that contains one is meaningless, so say INVALID instead of reporting a fake mismatch.
+import time
+now_ms = time.time() * 1000
+for inc in get(f"{PULSE}/incidents"):
+    if inc["induced"] and (inc["end_ms"] is None or inc["end_ms"] > now_ms - 70_000):
+        print(f"INVALID: an induced incident ({inc['kind']} {inc['feed']}) overlaps the last 60 s; rerun in a minute.")
+        sys.exit(3)
 rate = prom('rate(fathom_tick_to_store_latency_ns_count{table="derived_features"}[60s])')
 mean_store = {v: s / c for (v, s), c in zip(prom('increase(fathom_tick_to_store_latency_ns_sum{table="derived_features"}[60s])').items(), prom('increase(fathom_tick_to_store_latency_ns_count{table="derived_features"}[60s])').values()) if c}
 print(f"{'venue':<9}{'pulse /s':>10}{'prom /s':>10}{'diff':>8}   {'pulse recv->consume mean':>26}{'fathom tick->store mean':>26}")
