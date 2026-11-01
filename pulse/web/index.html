@@ -10,11 +10,14 @@
 <body>
 <div class="ocean" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i></div>
 
-<div class="top">
+<div class="top" style="view-transition-name: topbar">
   <span class="brand">FathomPulse</span>
   <span class="spacer"></span>
-  <label class="mode" title="Detail: every measurement, 10 times a second. Ops: calm categories, once a second."><span id="mDetail">Detail</span>
-    <input type="range" id="modeSlider" min="0" max="1" step="1" value="0" aria-label="View mode: Detail or Ops"><span id="mOps">Ops</span></label>
+  <div class="switch" id="modeSwitch" role="radiogroup" aria-label="View detail level">
+    <i class="thumb" aria-hidden="true"></i>
+    <button type="button" role="radio" id="swDetail" aria-checked="true" title="Every measurement, ten times a second">Detail</button>
+    <button type="button" role="radio" id="swOps" aria-checked="false" title="The same dashboard, calmer: once a second, in plain categories">Ops</button>
+  </div>
   <span class="badge" id="connBadge"><span class="dot"></span><span id="connText">Connecting…</span></span>
   <span class="badge" id="ageBadge"><span class="dot"></span><span class="num" id="ageText">no data yet</span></span>
   <span class="badge" id="calBadge"><span class="dot"></span><span>Not calibrated · built Day 4</span></span>
@@ -24,10 +27,30 @@
 
 <main class="ops" id="ops" hidden aria-live="off">
   <section class="hero card" id="opsHero"><div class="hl" id="opsHead">Waiting for data…</div><div class="hs" id="opsSub"></div></section>
-  <div class="vcards" id="opsVenues"></div>
-  <section class="card"><h3>Pipeline <span class="sub">last minute</span></h3><div class="meters" id="opsMeters"></div></section>
-  <section class="card"><h3>Incidents <span class="sub">newest first</span></h3><div class="incs" id="opsIncs"></div></section>
-  <p class="opsnote">Ops view rounds and smooths: labels change only after a few steady seconds, numbers update once a second. Hover any figure for the exact value, or slide to Detail for every millisecond.</p>
+  <div class="grid" id="opsgrid">
+    <section class="lens"><div class="lens-title e">Engine room</div>
+      <div class="card"><h3 data-chart="latency">Pipeline speed <span class="sub">last minute</span></h3><canvas id="eL" data-h="200"></canvas></div>
+      <div class="card"><h3 data-chart="share">Where the time goes <span class="sub">average, last minute</span></h3><div id="opsShare"></div></div>
+      <div class="card"><h3>Pipeline health</h3><div class="kpis" id="opsMeters"></div></div>
+      <div class="card"><h3>Calibration</h3><div class="kpis one" id="opsTrust"></div></div>
+    </section>
+    <section class="lens"><div class="lens-title m">Market lens</div>
+      <div class="card"><h3 data-chart="price">Price <span class="sub">last minute</span></h3>
+        <div class="px" id="opsPxb"><div class="ph"><span class="pn" id="pnb"></span><span class="pv" id="pvb"></span></div><canvas id="ePb" data-h="100"></canvas><div class="chips" id="chb"></div></div>
+        <div class="px" id="opsPxc"><div class="ph"><span class="pn" id="pnc"></span><span class="pv" id="pvc"></span></div><canvas id="ePc" data-h="100"></canvas><div class="chips" id="chc"></div></div></div>
+      <div class="card"><h3 data-chart="pressure">Buy and sell pressure <span class="sub">each second</span></h3><canvas id="eO" data-h="78"></canvas>
+        <div class="lg"><span><i style="background:var(--bid)"></i>buyers lean</span><span><i style="background:#3a3a38"></i>balanced</span><span><i style="background:var(--ask)"></i>sellers lean</span></div></div>
+      <div class="card"><h3 data-chart="trades">Trades <span class="sub">per 5 seconds</span></h3><canvas id="eT" data-h="96"></canvas></div>
+    </section>
+    <section class="lens"><div class="lens-title o">Operations</div>
+      <div class="card"><h3 data-chart="avail">Feed activity <span class="sub">each second</span></h3><canvas id="eA" data-h="86"></canvas>
+        <div class="lg"><span><i style="background:var(--status-good)"></i>normal</span><span><i style="background:var(--status-warning)"></i>quiet</span><span><i style="background:var(--status-serious)"></i>sparse</span><span><i style="background:#7a1f1f"></i>nothing</span></div></div>
+      <div class="card"><h3>Incidents <span class="sub">newest first</span></h3><div class="incs" id="opsIncs"></div></div>
+    </section>
+  </div>
+  <section class="card obottom"><h3>Activity and backlog <span class="sub">market activity and processor queue on one clock, last minute</span></h3>
+    <div class="two"><div><div class="sl2">Updates per second, both feeds</div><canvas id="eU" data-h="70"></canvas></div><div><div class="sl2">Messages waiting for the processor</div><canvas id="eB" data-h="70"></canvas></div></div></section>
+  <p class="opsnote">Same dashboard, calmer: hover a chart for the exact second, or any label for what it means. Labels change only after a few steady seconds and figures update once a second. Switch to Detail for every millisecond.</p>
 </main>
 
 <div class="grid" id="detail">
@@ -128,7 +151,8 @@
 </div>
 
 <div id="tip"></div>
-<div class="statusbar"><span class="num" id="sbClock"></span><span id="sbConn"></span><span class="num" id="sbSeq"></span><span class="num" id="sbMeter"></span><span class="sp"></span><span>LIVE · host-side Pulse · Fathom read-only</span></div>
+<div class="statusbar" style="view-transition-name: foot"><span class="num" id="sbClock"></span><span id="sbConn"></span><span class="num" id="sbSeq"></span><span class="num" id="sbMeter"></span><span class="sp"></span><span>LIVE · host-side Pulse · Fathom read-only</span></div>
+<div id="otip" class="otip" role="tooltip" hidden></div>
 <script src="/static/ops.js"></script>
 <script src="/static/app.js"></script>
 </body>

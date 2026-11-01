@@ -17,6 +17,7 @@ from typing import Optional
 
 STALL_OPEN_S, STALL_CLOSE_S = 3.0, 1.0
 Z_RATE, RATE_RATIO, MIN_BASE_RATE, BASE_S, FAST_S = 4.0, 0.5, 3.0, 60, 5
+RATE_PERSIST = 3      # the rate_drop condition must hold this many seconds in a row (a 1 s hiccup on both feeds fired it at z=-4.1 on 2026-11-01)
 LAG_FLOOR, Z_LAG, LAG_SECONDS = 200, 5.0, 3
 DRIFT_MIN_MS, Z_DRIFT, DRIFT_RATIO = 20.0, 5.0, 1.5     # latency_drift: needs >= +20 ms AND > 1.5x the preceding minute AND > 5 robust sigma
 KEEP = 40
@@ -63,6 +64,7 @@ class Detector:
         self._n = 0
         self._lag_run = 0
         self.lats: deque = deque(maxlen=BASE_S + 5)
+        self._rate_run: dict[str, int] = {}
         self._cool: dict[str, int] = {}      # seconds left after a stall during which rate_drop is not judged (its zeros are the stall's, not a second incident)
 
     # ---- helpers ----
@@ -118,7 +120,9 @@ class Detector:
                 med, sig = _robust(base)
                 mean_fast = sum(fast) / len(fast)
                 z = (mean_fast - med) / sig
-                if key not in self.open and med >= MIN_BASE_RATE and z < -Z_RATE and mean_fast < RATE_RATIO * med:
+                hit = med >= MIN_BASE_RATE and z < -Z_RATE and mean_fast < RATE_RATIO * med
+                self._rate_run[feed] = self._rate_run.get(feed, 0) + 1 if hit else 0
+                if key not in self.open and self._rate_run[feed] >= RATE_PERSIST:
                     self._start("rate_drop", feed, o, "warning",
                                 ("Induced: Pulse was told to drop records on purpose (incident demo)." if o.induced else
                                  f"Update rate fell to {mean_fast:.1f}/s from a normal {med:.1f}/s while the feed is still delivering. " +

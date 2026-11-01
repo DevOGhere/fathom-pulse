@@ -118,3 +118,12 @@ def test_drift_during_a_deliberate_test_is_labelled_induced():
     run_lat(d, 60, 20.0, 0)
     run_lat(d, 8, 100.0, 60, induced=True)
     assert d.snapshot()[0]["induced"] and d.snapshot()[0]["cause"].startswith("Induced")
+
+
+def test_a_one_or_two_second_dip_is_not_a_rate_drop_incident():
+    d = Detector()
+    run(d, 90)
+    run(d, 1, ra=0, t0=90)                       # a single dead second ...
+    run(d, 1, ra=3, t0=91)                       # ... and a thin one, then back to normal
+    run(d, 20, t0=92)
+    assert ("rate_drop", A) not in kinds(d), kinds(d)

@@ -82,8 +82,8 @@ function fit(id) {
   c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c.style.height = h + 'px';
   const x = c.getContext('2d', MANUAL ? { willReadFrequently: true } : undefined); x.setTransform(dpr, 0, 0, dpr, 0, 0); cvs[id] = { c, x, w, h };
 }
-const ids = ['cMid', 'cObi', 'cQuote', 'cLag', 'cAnat', 'cHist'];
-function fitAll() { ids.forEach(fit); S.dirty = true; }
+const ids = ['cMid', 'cObi', 'cQuote', 'cLag', 'cAnat', 'cHist', 'eL', 'ePb', 'ePc', 'eO', 'eA', 'eT', 'eU', 'eB'];
+function fitAll() { ids.forEach(fit); if (typeof OM !== 'undefined') OM.sec = -1; S.dirty = true; }
 new ResizeObserver(fitAll).observe(document.body);
 
 const PAD = { l: 64, r: 10, t: 6, b: 18 };
@@ -284,16 +284,30 @@ function renderLog() { S.logDirty = false; const l = $('log'); l.textContent = '
 
 // ---------- render loop ----------
 let lastStrip = 0;
-// ---------- Ops mode: calm categories from the same frames (see ops.js). Sampled once per FRAME-clock second, so replays match. ----------
-const OM = { mode: (RQ.get('mode') || localStorage.getItem('pulse.mode') || 'detail') === 'ops' ? 'ops' : 'detail', sec: -1, holds: {}, ema: { speed: new OPS.Ema(0.2), lag: new OPS.Ema(0.3) }, venues: {}, view: null };
+// ---------- Ops dashboard: the same frames, 1 Hz, calmer encodings (area, heat strips, zoned band chart). See ops.js + docs/UX.md ----------
+const OM = { mode: (RQ.get('mode') || localStorage.getItem('pulse.mode') || 'detail') === 'ops' ? 'ops' : 'detail', sec: -1, holds: {}, ema: { speed: new OPS.Ema(0.2), lag: new OPS.Ema(0.3) }, view: null, E: null, tips: {}, openInc: new Set(), draw: {}, hov: {}, cross: null };
 const ICON_SEV = { good: '✔', warning: '▲', serious: '■', critical: '✕' };
-function hold(key, name, v) { const h = OM.holds[key] || (OM.holds[key] = new OPS.Hold()); return OPS.band(name, h.push(OPS.bandIndex(name, v))); }
-function opsSample(f) {          // one decision per second: categories, smoothed numbers, headline
+const SEVC = { good: css('--status-good'), warning: css('--status-warning'), serious: css('--status-serious'), critical: css('--status-critical') };
+const el2 = el;
+function hold(key, name, v) { const h = OM.holds[key] || (OM.holds[key] = new OPS.Hold()), b = OPS.band(name, h.push(OPS.bandIndex(name, v))); b.settling = h.cand !== null; return b; }   // settling: the raw value already points elsewhere; the label waits for a few steady seconds
+const roll = (a, k) => a.map((_, i) => { const w = a.slice(Math.max(0, i - k + 1), i + 1).filter(x => x != null); return w.length ? w.reduce((x, y) => x + y, 0) / w.length : null; });
+const clock = sec => new Date(sec * 1000).toTimeString().slice(0, 8);
+
+function buildE(f) {          // chart series from the frame's own 60 one-second bins (nothing synthetic)
+  const V = [];
+  for (const [k, s] of Object.entries(f.series)) { const b = s.bins; if (!b) continue; V.push({ k, tag: k.startsWith('binance') ? 'b' : 'c', start: b.start_s, mid: b.mid, obi: b.obi_top1, n: b.n_derived, trades: b.trade_count_1s, st: b.stages || {} }); }
+  if (!V.length) return null;
+  const ax = V[0].start, at = (v, arr, st) => { const i = v.start.indexOf(st); return i < 0 || !arr ? null : arr[i]; };
+  const p50 = ax.map(st => { const x = V.map(v => at(v, v.st.tot_p50, st)).filter(y => y != null); return x.length ? x.reduce((a, c) => a + c, 0) / x.length : null; });
+  const p99 = ax.map(st => { const x = V.map(v => at(v, v.st.tot_p99, st)).filter(y => y != null); return x.length ? Math.max(...x) : null; });
+  const avg = key => { const x = V.flatMap(v => (v.st[key] || []).filter(y => y != null)); return x.length ? x.reduce((a, c) => a + c, 0) / x.length : null; };
+  return { V, ax, p50: roll(p50, 5), p99: roll(p99, 5), p50raw: p50, p99raw: p99, share: { s1: avg('s1_p50'), s2: avg('s2_p50'), s3: avg('s3_p50'), tw: avg('tw_p50') } };
+}
+function opsSample(f) {          // one decision per frame-clock second: categories, smoothed numbers, headline
   const sevs = [], venues = {};
   for (const [k, s] of Object.entries(f.series)) {
     const w = s.window_1s, age = w ? w.derived_age_ms : (s.last_msg_age_ms != null ? s.last_msg_age_ms : 1e9);
-    const fresh = hold(k + ':fresh', 'fresh', age), ratio = OPS.rateRatio(s.bins ? s.bins.n_derived : []);
-    const rate = ratio == null ? null : hold(k + ':rate', 'rate', ratio);
+    const fresh = hold(k + ':fresh', 'fresh', age), ratio = OPS.rateRatio(s.bins ? s.bins.n_derived : []), rate = ratio == null ? null : hold(k + ':rate', 'rate', ratio);
     const mids = s.bins ? s.bins.mid : [], lastMid = [...mids].reverse().find(x => x != null), firstMid = mids.find(x => x != null);
     venues[k] = { fresh, rate, px: lastMid, chg: lastMid != null && firstMid ? (lastMid / firstMid - 1) * 100 : null, mids, age, ratio };
     sevs.push(fresh.sev); if (rate) sevs.push(rate.sev);
@@ -305,43 +319,153 @@ function opsSample(f) {          // one decision per second: categories, smoothe
   const c = f.calibration || {}, trust = c.status === 'valid' ? { sev: 'good', word: 'Verified', note: 'Pulse checked its own timing and found a known delay.' }
     : c.status === 'running' ? { sev: 'warning', word: 'Checking', note: 'A self-test is running.' }
     : { sev: 'warning', word: 'Unverified', note: c.status === 'failed' ? 'The last self-test failed.' : 'The timing has not been verified recently.' };
-  OM.view = { venues, speed, speedMs: sp, backlog, lagN: lg, trust, head: OPS.headline(sevs, openReal, induced), inc };
+  OM.view = { venues, speed, speedMs: sp, backlog, lagN: lg, trust, head: OPS.headline(sevs, openReal, induced), inc }; OM.E = buildE(f);
 }
-const el2 = (tag, cls, text) => { const e = el(tag, cls, text); return e; };
-function chip(b, extra) { const c = el2('span', 'chip2'); c.dataset.sev = b.sev; c.textContent = `${ICON_SEV[b.sev]} ${b.word}`; if (extra) c.title = extra; return c; }
-function spark2(mids) { const v = mids.filter(x => x != null); if (v.length < 3) return ''; const sm = v.map((_, i) => { const a = v.slice(Math.max(0, i - 2), i + 3); return a.reduce((x, y) => x + y, 0) / a.length; });
-  const lo = Math.min(...sm), hi = Math.max(...sm), r = hi - lo || 1; return `<svg viewBox="0 0 300 46" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke="var(--seq-350)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points="${sm.map((q, i) => `${(i / (sm.length - 1) * 300).toFixed(1)},${(42 - (q - lo) / r * 38).toFixed(1)}`).join(' ')}"/></svg>`; }
-function meter(label, b, big, small, steps, tip) { const m = el2('div', 'm'); m.dataset.sev = b ? b.sev : 'good'; m.title = tip || '';
-  const row = el2('div', 'row'); row.append(el2('span', '', label), el2('b', '', b ? `${ICON_SEV[b.sev]} ${b.word}` : '—')); m.append(row);
-  const seg = el2('div', 'seg' + (steps === 3 ? ' three' : '')); for (let i = 0; i < steps; i++) seg.append(el2('i', b && i <= b.i ? 'on' : '')); m.append(seg);
-  m.append(el2('div', 'row', '')); m.lastChild.append(el2('span', '', big), el2('span', '', small || '')); return m; }
+
+// tooltips: WCAG 1.4.13 (content on hover/focus): shows on hover AND keyboard focus, stays while the pointer is on it, Esc dismisses.
+const TIP = { el: null, key: null, anchor: null, tIn: 0, tOut: 0 };
+const tipTarget = n => (n && n.closest ? n.closest('[data-tip]') : null);
+function tipFill() { const t = OM.tips[TIP.key]; if (!t) return; TIP.el.textContent = ''; TIP.el.append(el('div', 'th', t.h), el('div', 'tt', t.t)); }
+function tipPlace() { const r = TIP.anchor.getBoundingClientRect(), tw = TIP.el.offsetWidth, th = TIP.el.offsetHeight;
+  let x = Math.min(Math.max(8, r.left), innerWidth - tw - 8), y = r.bottom + 8; if (y + th > innerHeight - 8) y = Math.max(8, r.top - th - 8);
+  TIP.el.style.left = x + 'px'; TIP.el.style.top = y + 'px'; }
+function tipShow(a) { clearTimeout(TIP.tOut); TIP.anchor = a; TIP.key = a.dataset.tip; tipFill(); TIP.el.hidden = false; tipPlace(); a.setAttribute('aria-describedby', 'otip'); }
+function tipHide() { clearTimeout(TIP.tIn); if (TIP.anchor) TIP.anchor.removeAttribute('aria-describedby'); TIP.el.hidden = true; TIP.anchor = null; TIP.key = null; }
+function tipAt(x, y, tip) { OM.tips['chart'] = tip; TIP.anchor = { dataset: { tip: 'chart' }, getBoundingClientRect: () => ({ left: x + 14, right: x + 14, top: y, bottom: y + 14 }), setAttribute() {}, removeAttribute() {} }; TIP.key = 'chart'; clearTimeout(TIP.tOut); tipFill(); TIP.el.hidden = false; tipPlace(); }
+const tipped = (node, key, tip) => { OM.tips[key] = tip; node.dataset.tip = key; node.tabIndex = 0; return node; };
+
+// ---- chart geometry + drawing (canvases are sized by fit(); every draw takes the current crosshair index) ----
+const G = { T: 12, B: 22 };
+const px2 = (g, i, n, L, R) => L + (g.w - L - R) * (n <= 1 ? 1 : i / (n - 1));
+function xLabels(g, L, R) { const x = g.x; x.fillStyle = C.muted; x.font = '11px ' + css('--font-ui'); x.textBaseline = 'alphabetic'; x.textAlign = 'left'; x.fillText('1 min ago', L, g.h - 6); x.textAlign = 'right'; x.fillText('now', g.w - R, g.h - 6); }
+function cross(g, id, n, L, R, y0, y1) { const c = OM.cross; if (!c || c.id !== id) return null; const X = px2(g, c.i, n, L, R); g.x.strokeStyle = 'rgba(255,255,255,.35)'; g.x.lineWidth = 1; g.x.beginPath(); g.x.moveTo(Math.round(X) + .5, y0); g.x.lineTo(Math.round(X) + .5, y1); g.x.stroke(); return X; }
+function drawArea(id, vals, raw, color) {
+  const g = cvs[id]; if (!g) return; const x = g.x, L = 8, R = 8, n = vals.length, pts = vals.map((v, i) => [i, v]).filter(p => p[1] != null);
+  x.clearRect(0, 0, g.w, g.h); if (pts.length < 3) return emptyChart(g, 'Collecting the first minute…');
+  const lo = Math.min(...pts.map(p => p[1])), hi = Math.max(...pts.map(p => p[1])), pad = (hi - lo) * .18 || 1, a = lo - pad, b = hi + pad, Y = v => G.T + (g.h - G.T - G.B) * (1 - (v - a) / (b - a));
+  const gr = x.createLinearGradient(0, G.T, 0, g.h - G.B); gr.addColorStop(0, color + '55'); gr.addColorStop(1, color + '00');
+  x.beginPath(); pts.forEach((p, k) => (k ? x.lineTo(px2(g, p[0], n, L, R), Y(p[1])) : x.moveTo(px2(g, p[0], n, L, R), Y(p[1])))); x.lineTo(px2(g, pts[pts.length - 1][0], n, L, R), g.h - G.B); x.lineTo(px2(g, pts[0][0], n, L, R), g.h - G.B); x.closePath(); x.fillStyle = gr; x.fill();
+  x.beginPath(); pts.forEach((p, k) => (k ? x.lineTo(px2(g, p[0], n, L, R), Y(p[1])) : x.moveTo(px2(g, p[0], n, L, R), Y(p[1])))); x.strokeStyle = color; x.lineWidth = 3; x.lineJoin = x.lineCap = 'round'; x.stroke();
+  x.fillStyle = C.muted; x.font = '11px ' + css('--font-ui'); x.textAlign = 'right'; x.fillText(Math.round(hi).toLocaleString(), g.w - R, G.T + 10); x.fillText(Math.round(lo).toLocaleString(), g.w - R, g.h - G.B - 4);
+  const X = cross(g, id, n, L, R, G.T, g.h - G.B), last = pts[pts.length - 1], ci = OM.cross && OM.cross.id === id ? OM.cross.i : last[0], cv = vals[ci];
+  if (cv != null) { x.fillStyle = C.ring; x.beginPath(); x.arc(px2(g, ci, n, L, R), Y(cv), 7, 0, 7); x.fill(); x.fillStyle = color; x.beginPath(); x.arc(px2(g, ci, n, L, R), Y(cv), 4.5, 0, 7); x.fill(); }
+  xLabels(g, L, R);
+}
+function drawLatency(E) {
+  const g = cvs.eL; if (!g) return; if (!E) return emptyChart(g, 'Filling the first minute…'); const x = g.x, L = 8, R = 66, n = E.ax.length; x.clearRect(0, 0, g.w, g.h);
+  const have = E.p99.filter(v => v != null); if (have.length < 3) return emptyChart(g, 'Collecting the first minute…');
+  const ymax = Math.min(400, Math.max(150, Math.max(...have) * 1.2)), Y = v => G.T + (g.h - G.T - G.B) * (1 - Math.min(v, ymax) / ymax);
+  const zones = [[0, 50, 'good', .10, 'Smooth'], [50, 100, 'good', .045, 'Normal'], [100, 200, 'warning', .10, 'Slow'], [200, 1e9, 'serious', .10, 'Late']];
+  for (const [z0, z1, sev, al, name] of zones) { if (z0 >= ymax) continue; const y0 = Y(Math.min(z1, ymax)), y1 = Y(z0); x.fillStyle = SEVC[sev] + Math.round(al * 255).toString(16).padStart(2, '0'); x.fillRect(L, y0, g.w - L - R, y1 - y0);
+    x.fillStyle = C.muted; x.font = '11px ' + css('--font-ui'); x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillText(name, g.w - R + 8, (y0 + y1) / 2); if (z0) { x.fillText(z0 + ' ms', g.w - R + 8, y1 - 7); } }
+  x.textBaseline = 'alphabetic';
+  const idx = E.p99.map((v, i) => i).filter(i => E.p99[i] != null && E.p50[i] != null);
+  x.beginPath(); idx.forEach((i, k) => (k ? x.lineTo(px2(g, i, n, L, R), Y(E.p99[i])) : x.moveTo(px2(g, i, n, L, R), Y(E.p99[i])))); [...idx].reverse().forEach(i => x.lineTo(px2(g, i, n, L, R), Y(E.p50[i]))); x.closePath(); x.fillStyle = C.seq + '40'; x.fill();
+  x.beginPath(); idx.forEach((i, k) => (k ? x.lineTo(px2(g, i, n, L, R), Y(E.p99[i])) : x.moveTo(px2(g, i, n, L, R), Y(E.p99[i])))); x.strokeStyle = C.seq + '99'; x.lineWidth = 1.5; x.stroke();
+  x.beginPath(); idx.forEach((i, k) => (k ? x.lineTo(px2(g, i, n, L, R), Y(E.p50[i])) : x.moveTo(px2(g, i, n, L, R), Y(E.p50[i])))); x.strokeStyle = C.seq; x.lineWidth = 3; x.lineJoin = x.lineCap = 'round'; x.stroke();
+  cross(g, 'eL', n, L, R, G.T, g.h - G.B); xLabels(g, L, R);
+}
+function drawHeat(id, E, rows, extra) {              // rows: [{label, color(i) -> css|null}], 60 cells each
+  const g = cvs[id]; if (!g) return; if (!E) return emptyChart(g, 'Filling the first minute…'); const x = g.x, L = 62, R = 8, n = E.ax.length, top = extra ? 12 : 4, rh = (g.h - top - G.B) / rows.length, cw = (g.w - L - R) / n; x.clearRect(0, 0, g.w, g.h);
+  if (extra) extra(x, L, R, n, g);
+  rows.forEach((r, ri) => { const y = top + ri * rh; x.fillStyle = C.sec; x.font = '12px ' + css('--font-ui'); x.textAlign = 'left'; x.textBaseline = 'middle'; x.fillText(r.label, 0, y + rh / 2 - 1);
+    for (let i = 0; i < n; i++) { const c = r.color(i); x.fillStyle = c || 'rgba(255,255,255,.04)'; x.beginPath(); (x.roundRect || x.rect).call(x, L + i * cw + .5, y + 1, Math.max(1, cw - 1), rh - 3, 2); x.fill(); } });
+  x.textBaseline = 'alphabetic'; cross(g, id, n, L, R, top - 2, g.h - G.B); xLabels(g, L, R);
+}
+function drawTrades(E) {
+  const g = cvs.eT; if (!g) return; if (!E) return emptyChart(g, 'Filling the first minute…'); const x = g.x, L = 8, R = 8; x.clearRect(0, 0, g.w, g.h);
+  const n = E.ax.length, cols = []; for (let s = 0; s + 5 <= n; s += 5) { let t = 0; for (const v of E.V) for (let j = s; j < s + 5; j++) t += v.trades && v.trades[j] != null ? v.trades[j] : 0; cols.push({ t, s }); }
+  const max = Math.max(1, ...cols.map(c => c.t)), bw = (g.w - L - R) / cols.length, base = g.h - G.B; OM.tradeCols = cols;
+  cols.forEach((c, i) => { const h = (base - G.T - 14) * c.t / max, X = L + i * bw + 3; x.fillStyle = OM.cross && OM.cross.id === 'eT' && OM.cross.i === i ? C.seq : C.seq + 'bb'; x.beginPath(); (x.roundRect || x.rect).call(x, X, base - h, Math.max(2, bw - 6), h, [4, 4, 0, 0]); x.fill(); });
+  x.fillStyle = C.muted; x.font = '11px ' + css('--font-ui'); x.textAlign = 'right'; x.fillText(max + ' max', g.w - R, G.T + 4); xLabels(g, L, R);
+}
+function incMarks(E, inc) { return (x, L, R, n, g) => { const w = (g.w - L - R) / n; for (const i of inc) { const a = E.ax[0] * 1000, t0 = Math.max(0, (i.start_ms - a) / 1000), t1 = Math.min(n, ((i.end_ms == null ? E.ax[n - 1] * 1000 + 1000 : i.end_ms) - a) / 1000); if (t1 <= 0 || t0 >= n) continue;
+  x.fillStyle = i.induced ? SEVC.serious : SEVC.critical; x.fillRect(L + t0 * w, 2, Math.max(3, (t1 - t0) * w), 5); } }; }
+
+function opsDraw() {
+  const E = OM.E, v = OM.view; if (!E) { ['eL', 'eO', 'eA', 'eT', 'ePb', 'ePc', 'eU', 'eB'].forEach(id => cvs[id] && emptyChart(cvs[id], 'Filling the first minute…')); return; } const inc = v.inc;
+  for (const vn of E.V) { const id = 'eP' + vn.tag; OM.draw[id] = () => drawArea(id, roll(vn.mid, 3), vn.mid, vn.tag === 'b' ? C.seq : css('--seq-250')); }
+  OM.draw.eL = () => drawLatency(E);
+  const ratio = vn => { const nz = vn.n.filter(q => q > 0), base = OPS.median(nz); return i => (base == null || base < 3 ? null : (vn.n[i] || 0) / base); };
+  OM.draw.eO = () => drawHeat('eO', E, E.V.map(vn => ({ label: OPS.VN(vn.k), color: i => { const o = vn.obi[i]; return o == null ? null : (o >= 0 ? C.bid : C.ask) + Math.round(Math.min(1, .12 + .88 * Math.abs(o)) * 255).toString(16).padStart(2, '0'); } })));
+  OM.draw.eA = () => drawHeat('eA', E, E.V.map(vn => { const rr = ratio(vn); return { label: OPS.VN(vn.k), color: i => { const q = rr(i); if (q == null) return null; return q >= .7 ? SEVC.good : q >= .4 ? SEVC.warning : q > 0 ? SEVC.serious : '#7a1f1f'; } }; }), incMarks(E, inc));
+  OM.draw.eT = () => drawTrades(E);
+  const upd = E.ax.map((_, i) => E.V.reduce((a, vn) => a + (vn.n[i] || 0), 0)), end = E.ax[E.ax.length - 1] * 1000;
+  const back = E.ax.map(st => { const h = S.lagHist.filter(q => q.lag != null && q.t >= st * 1000 && q.t < st * 1000 + 1000); return h.length ? h[h.length - 1].lag : null; });
+  OM.draw.eU = () => drawArea('eU', roll(upd, 3), upd, css('--seq-250')); OM.draw.eB = () => (back.some(q => q) ? drawArea('eB', back, back, css('--seq-350')) : (cvs.eB && emptyChart(cvs.eB, 'Nothing waiting: the processor is keeping up')));
+  Object.values(OM.draw).forEach(fn => fn());
+  const R2 = id => ({ eL: 'eL' }[id] || id);
+  // hover text per chart (index = second 0..59; rows by y)
+  const t = i => clock(E.ax[Math.max(0, Math.min(E.ax.length - 1, i))]);
+  for (const vn of E.V) OM.hov['eP' + vn.tag] = i => ({ h: `${OPS.VN(vn.k)} · ${t(i)}`, t: vn.mid[i] == null ? 'No update that second.' : `Mid price ${vn.mid[i].toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` });
+  OM.hov.eL = i => { const a = E.p50raw[i], b = E.p99raw[i]; if (a == null) return { h: t(i), t: 'No updates that second.' }; const band = OPS.band('speed', OPS.bandIndex('speed', b)); return { h: t(i), t: `Typical ${OPS.fmtMs(a)}. Slowest 1 in 100: ${OPS.fmtMs(b)}, which reads ${band.word}.` }; };
+  OM.hov.eO = (i, row) => { const vn = E.V[Math.max(0, Math.min(E.V.length - 1, row))], o = vn.obi[i]; return { h: `${OPS.VN(vn.k)} · ${t(i)}`, t: o == null ? 'No book update that second.' : o > .15 ? `Buyers lean: ${Math.round(o * 100)}% more resting buy size.` : o < -.15 ? `Sellers lean: ${Math.round(-o * 100)}% more resting sell size.` : 'Balanced.' }; };
+  OM.hov.eA = (i, row) => { const vn = E.V[Math.max(0, Math.min(E.V.length - 1, row))], base = OPS.median(vn.n.filter(q => q > 0)); return { h: `${OPS.VN(vn.k)} · ${t(i)}`, t: `${vn.n[i] || 0} updates that second` + (base ? `; its normal is about ${Math.round(base)}.` : '.') }; };
+  OM.hov.eT = i => { const c = OM.tradeCols && OM.tradeCols[Math.min(i, OM.tradeCols.length - 1)]; return c ? { h: `${t(c.s)} to ${t(Math.min(E.ax.length - 1, c.s + 4))}`, t: `${c.t} trades in 5 seconds, both venues.` } : null; };
+}
+const GEO = { eL: [8, 66], eO: [62, 8], eA: [62, 8], eT: [8, 8], ePb: [8, 8], ePc: [8, 8] };
+function hoverInit() {
+  const ops = $('ops');
+  ops.addEventListener('mousemove', e => { const c = e.target.closest && e.target.closest('canvas'); if (!c || !OM.hov[c.id]) return; const g = cvs[c.id], r = c.getBoundingClientRect(), [L, R] = GEO[c.id], n = c.id === 'eT' ? (OM.tradeCols || []).length : 60;
+    const fx = (e.clientX - r.left - L) / Math.max(1, g.w - L - R); if (fx < -.02 || fx > 1.02) return; const i = c.id === 'eT' ? Math.min(n - 1, Math.max(0, Math.floor(fx * n))) : Math.max(0, Math.min(59, Math.round(fx * 59)));
+    const rows = c.id === 'eO' || c.id === 'eA' ? OM.E.V.length : 1, row = Math.floor((e.clientY - r.top - 4) / ((g.h - 4 - G.B) / rows)); const tip = OM.hov[c.id](c.id === 'eT' ? i : i, row);
+    OM.cross = { id: c.id, i }; if (OM.draw[c.id]) OM.draw[c.id](); if (tip) tipAt(e.clientX, e.clientY, tip); });
+  ops.addEventListener('mouseout', e => { const c = e.target.closest && e.target.closest('canvas'); if (c && OM.cross && OM.cross.id === c.id && !(e.relatedTarget && c.contains(e.relatedTarget))) { const id = c.id; OM.cross = null; if (OM.draw[id]) OM.draw[id](); tipHide(); } });
+}
+function initTips() { TIP.el = $('otip'); const ops = $('ops');
+  const on = e => { const a = tipTarget(e.target); if (!a || a === TIP.anchor) return; clearTimeout(TIP.tIn); TIP.tIn = setTimeout(() => tipShow(a), e.type === 'focusin' ? 0 : 220); };
+  const off = e => { clearTimeout(TIP.tIn); if (e.relatedTarget && TIP.el.contains(e.relatedTarget)) return; if (TIP.key !== 'chart') TIP.tOut = setTimeout(tipHide, 140); };
+  ops.addEventListener('mouseover', on); ops.addEventListener('focusin', on); ops.addEventListener('mouseout', off); ops.addEventListener('focusout', off);
+  TIP.el.addEventListener('mouseenter', () => clearTimeout(TIP.tOut)); TIP.el.addEventListener('mouseleave', () => { TIP.tOut = setTimeout(tipHide, 140); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !TIP.el.hidden) { tipHide(); if (OM.cross) { const id = OM.cross.id; OM.cross = null; OM.draw[id] && OM.draw[id](); } } });
+  addEventListener('scroll', () => { if (!TIP.el.hidden) tipHide(); }, true); hoverInit(); }
+
+function chip(b, key, tip) { const c = el2('span', 'chip2'); c.dataset.sev = b.sev; c.textContent = `${ICON_SEV[b.sev]} ${b.word}`; return tipped(c, key, tip); }
+function tile(label, name, b, big, sub, key, tip) {          // KPI: bold figure, category word, gauge with the ranges VISIBLE under it
+  const m = el2('div', 'm'); m.dataset.sev = b ? b.sev : 'good'; m.append(el2('div', 'lbl', label));
+  const row = el2('div', 'bigrow'); row.append(el2('span', 'bigv', big || '—'), el2('b', 'word', b ? `${ICON_SEV[b.sev]} ${b.word}` : '')); m.append(row);
+  if (name && b) { const bands = OPS.BANDS[name], seg = el2('div', 'seg'), lab = el2('div', 'bl'); seg.style.setProperty('--n', bands.length); lab.style.setProperty('--n', bands.length);
+    bands.forEach((x, i) => { seg.append(el2('i', i <= b.i ? 'on' : '')); const t = el2('span', i === b.i ? 'cur' : '', x[2]); lab.append(t); }); m.append(seg, lab); }
+  m.append(el2('span', 'dt', (sub || '') + (b && b.settling ? ' · label settling' : ''))); return b && tip ? tipped(m, key, tip) : m; }
 function renderOps(f) {
-  const sec = Math.floor(f.ts_ms / 1000); if (sec !== OM.sec || !OM.view) { OM.sec = sec; opsSample(f); } else return;     // numbers move once a second
-  const v = OM.view, H = v.head;
-  $('opsHero').dataset.sev = H.sev; $('opsHead').textContent = `${ICON_SEV[H.sev]} ${H.word}`; $('opsSub').textContent = H.sub + (v.trust.word !== 'Verified' && H.word === 'All good' ? ' (Timing is ' + v.trust.word.toLowerCase() + '.)' : '');
-  const box = $('opsVenues'); box.textContent = '';
-  for (const [k, x] of Object.entries(v.venues)) { const c = el2('section', 'card vc'); c.dataset.sev = x.fresh.sev;
-    c.append(el2('div', 'name', k + ' · ' + (QUOTE[k.split('/')[0]] || '')), el2('div', 'px', x.px != null ? x.px.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'),
-      el2('div', 'chg', x.chg == null ? '' : `${x.chg >= 0 ? '▲' : '▼'} ${Math.abs(x.chg).toFixed(2)}% in the last minute · as of the last full second`));
-    const sp = document.createElement('div'); sp.innerHTML = spark2(x.mids); c.append(sp);
-    const ch = el2('div', 'chips'); ch.append(chip(x.fresh, `data age ${Math.round(x.age)} ms`)); if (x.rate) ch.append(chip({ sev: x.rate.sev, word: 'Updates: ' + x.rate.word }, x.ratio != null ? `rate is ${(x.ratio * 100).toFixed(0)}% of its normal` : ''));
-    c.append(ch); box.append(c); }
-  const mt = $('opsMeters'); mt.textContent = '';
-  mt.append(meter('Speed (how long an update takes to get here)', v.speed, v.speedMs == null ? '' : `about ${OPS.roundTo(v.speedMs, 10)} ms`, 'slowest 1 in 100 over the last minute', 4, v.speedMs == null ? '' : `pipeline p99 ${v.speedMs.toFixed(1)} ms (smoothed)`),
-    meter('Backlog (is the processor keeping up?)', v.backlog, v.lagN == null ? '' : `${OPS.roundTo(v.lagN, 10)} messages behind`, '', 3, v.lagN == null ? '' : `lag ${v.lagN.toFixed(1)} msgs (smoothed)`),
-    (() => { const t = meter('Trust (does Pulse know its own timing?)', v.trust, v.trust.note, '', 3, ''); t.querySelector('.seg').remove(); return t; })());
-  const ib = $('opsIncs'); ib.textContent = ''; const list = v.inc.slice().sort((a, b) => b.start_ms - a.start_ms).slice(0, 4);
-  if (!list.length) ib.append(el2('div', 'empty', 'No incidents in this session.')); else for (const i of list) { const d = el2('div', 'inc'), h = el2('div', 'h');
-    h.append(el2('b', '', INC_NAME[i.kind] || i.kind), el2('span', '', i.feed || 'processor')); if (i.induced) h.append(el2('span', 'tag', 'induced'));
-    h.append(el2('span', 't num', `${new Date(i.start_ms).toTimeString().slice(0, 8)} · ${i.end_ms == null ? 'ongoing' : Math.round((i.end_ms - i.start_ms) / 1000) + ' s'}`)); d.append(h, el2('div', 'c', i.cause)); ib.append(d); }
+  const sec = Math.floor(f.ts_ms / 1000); if (sec === OM.sec && OM.view) return; OM.sec = sec; opsSample(f);
+  const v = OM.view, H = v.head, X = OPS.EXPLAIN, c = f.calibration || {}, E = OM.E;
+  const parts = [...Object.entries(v.venues).map(([k, x]) => `${OPS.VN(k)}: ${x.fresh.word}` + (x.rate ? `, updates ${x.rate.word.toLowerCase()}` : '')), v.speed ? `Speed: ${v.speed.word}` : null, v.backlog ? `Backlog: ${v.backlog.word}` : null, `Trust: ${v.trust.word}`, v.inc.some(i => i.end_ms == null && !i.induced) ? 'Open incident: yes' : 'Open incidents: none'].filter(Boolean);
+  const hero = $('opsHero'); hero.dataset.sev = H.sev; $('opsHead').textContent = `${ICON_SEV[H.sev]} ${H.word}`; $('opsSub').textContent = H.sub + (v.trust.word !== 'Verified' && H.word === 'All good' ? ` Timing is ${v.trust.word.toLowerCase()}.` : ''); tipped(hero, 'head', X.head(parts));
+  const worst = Object.entries(v.venues).sort((a, b) => b[1].fresh.i - a[1].fresh.i || b[1].age - a[1].age)[0], K = $('opsMeters'); K.textContent = '';
+  K.append(tile('Speed', 'speed', v.speed, v.speedMs == null ? '' : `${OPS.roundTo(v.speedMs, 10)} ms`, 'slowest 1 in 100, last minute', 'speed', v.speed ? X.speed(v.speed, v.speedMs) : null),
+    tile('Backlog', 'backlog', v.backlog, v.lagN == null ? '' : `${OPS.roundTo(v.lagN, 10)}`, 'messages waiting for the processor', 'backlog', v.backlog ? X.backlog(v.backlog, v.lagN) : null),
+    worst ? tile('Data age', 'fresh', worst[1].fresh, OPS.fmtMs(worst[1].age), `${OPS.VN(worst[0])}, the older of the two feeds`, 'fresh', X.fresh(worst[0], worst[1].fresh, worst[1].age)) : tile('Data age', null, null, '', ''));
+  const TR = $('opsTrust'); TR.textContent = ''; TR.append(tile('Trust', null, v.trust, c.status === 'valid' && c.last ? `±${c.last.tol_ms} ms` : '', v.trust.note, 'trust', X.trust(c.status || 'none', c.age_s || 0, c.ttl_s || 180, c.last ? c.last.tol_ms : '?')));
+  for (const [k, x] of Object.entries(v.venues)) { const t = k.startsWith('binance') ? 'b' : 'c'; if (!$('pn' + t)) continue; $('pn' + t).textContent = `${OPS.VN(k)} · ${k.split('/')[1].toUpperCase()}`;
+    const pv = $('pv' + t); pv.textContent = x.px != null ? x.px.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'; if (x.chg != null) { const s = el2('small', '', `${x.chg >= 0 ? '▲' : '▼'} ${Math.abs(x.chg).toFixed(2)}%`); pv.append(s); } tipped(pv, 'px:' + k, X.price(k));
+    const ch = $('ch' + t); ch.textContent = ''; ch.append(chip(x.fresh, 'f:' + k, X.fresh(k, x.fresh, x.age))); if (x.rate) ch.append(chip({ sev: x.rate.sev, word: 'Updates ' + x.rate.word.toLowerCase() }, 'r:' + k, X.rate(k, x.rate, x.ratio))); }
+  document.querySelectorAll('h3[data-chart]').forEach(h => tipped(h, 'chart:' + h.dataset.chart, X.chart[h.dataset.chart]));
+  const sh = $('opsShare'); sh.textContent = ''; if (E && E.share.s1 != null) { const S2 = E.share, segs = [['s1', 'Fathom', 'var(--stage-recv)'], ['s2', 'Hand-off to Pulse', 'var(--stage-derive)'], ['s3', 'Pulse', 'var(--stage-pulse)'], ['tw', 'Wait for next refresh', 'rgba(255,255,255,.22)']];
+    const bar = el2('div', 'share'), list = el2('div', 'sl'); for (const [k, name, col] of segs) { const val = S2[k] == null ? 0 : S2[k], d = el2('div'); d.style.background = col; d.style.flex = `${Math.max(val, .4)} 1 0`; tipped(d, 'st:' + k, X.stage[k]); bar.append(d);
+      const r = el2('div'); r.append(Object.assign(el2('span'), {})); r.firstChild.append(Object.assign(el2('i'), {}), document.createTextNode(name)); r.firstChild.firstChild.style.background = col; r.append(el2('b', '', OPS.fmtMs(val))); tipped(r, 'sl:' + k, X.stage[k]); list.append(r); } sh.append(bar, list); }
+  const ib = $('opsIncs'); ib.textContent = ''; const list = v.inc.slice().sort((a, b) => b.start_ms - a.start_ms).slice(0, 5);
+  if (!list.length) ib.append(el2('div', 'empty', 'Nothing has gone wrong in this session.')); else for (const i of list) { const d = el2('div', 'inc' + (OM.openInc.has(i.id) ? ' open' : '')), h = el2('div', 'h'); h.tabIndex = 0; h.setAttribute('role', 'button'); h.setAttribute('aria-expanded', OM.openInc.has(i.id));
+    h.append(el2('span', 'car', '›'), el2('b', '', INC_NAME[i.kind] || i.kind), el2('span', '', i.feed ? OPS.VN(i.feed) : 'Processor')); if (i.induced) h.append(el2('span', 'tag', 'test'));
+    h.append(el2('span', 't num', `${new Date(i.start_ms).toTimeString().slice(0, 8)} · ${i.end_ms == null ? 'ongoing' : OPS.fmtMs(i.end_ms - i.start_ms)}`));
+    const flip = () => { OM.openInc.has(i.id) ? OM.openInc.delete(i.id) : OM.openInc.add(i.id); d.classList.toggle('open'); h.setAttribute('aria-expanded', OM.openInc.has(i.id)); };
+    h.addEventListener('click', flip); h.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } });
+    d.append(h, el2('div', 'c', i.cause)); ib.append(d); }
+  opsDraw(); if (TIP.el && !TIP.el.hidden && TIP.key !== 'chart') { tipFill(); tipPlace(); }
 }
 function applyMode(mode, persist) {
-  OM.mode = mode; OM.sec = -1; if (persist) localStorage.setItem('pulse.mode', mode);
-  const ops = mode === 'ops'; $('ops').hidden = !ops; $('detail').hidden = ops; $('strip').hidden = ops; $('modeSlider').value = ops ? 1 : 0;
-  $('mOps').className = ops ? 'on' : ''; $('mDetail').className = ops ? '' : 'on';
-  if (!ops) fitAll(); S.dirty = true;                  // canvases measured 0 px while hidden
+  const swap = () => {
+    OM.mode = mode; OM.sec = -1; if (persist) localStorage.setItem('pulse.mode', mode);
+    const ops = mode === 'ops'; $('ops').hidden = !ops; $('detail').hidden = ops; $('strip').hidden = ops; $('modeSwitch').dataset.mode = mode;
+    $('swDetail').setAttribute('aria-checked', !ops); $('swOps').setAttribute('aria-checked', ops); $('swDetail').tabIndex = ops ? -1 : 0; $('swOps').tabIndex = ops ? 0 : -1;
+    tipHide(); fitAll();                                // canvases measured 0 px while hidden: re-measure on every switch
+    if (S.frame) { S.dirty = false; render(); }         // draw NOW: the transition snapshots the new view right after this callback returns
+  };
+  const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (document.startViewTransition && !calm && OM.ready && S.frame) document.startViewTransition(swap); else swap();
 }
-$('modeSlider').addEventListener('input', e => applyMode(e.target.value === '1' ? 'ops' : 'detail', true));
+$('swDetail').addEventListener('click', () => applyMode('detail', true)); $('swOps').addEventListener('click', () => applyMode('ops', true));
+$('modeSwitch').addEventListener('keydown', e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { const to = OM.mode === 'ops' ? 'detail' : 'ops'; applyMode(to, true); $(to === 'ops' ? 'swOps' : 'swDetail').focus(); e.preventDefault(); } });
 function render() {
   if (OM.mode === 'ops' && S.frame) { const t0 = performance.now(); renderChrome(S.frame, sel(), sel() && sel().window_1s); renderCal(S.frame); renderOps(S.frame); S.costs.push(performance.now() - t0); if (S.costs.length > 600) S.costs.shift(); S.draws++; return; }
   const f = S.frame, t0 = performance.now(); if (!f) { renderChrome({ lag: {}, client: { drops: 0 } }, null, null); return; }
@@ -361,4 +485,4 @@ setInterval(() => { $('sbClock').textContent = new Date().toTimeString().slice(0
   fetch('/debug/stats', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ raf_fps: +fps.toFixed(1), draws: S.draws, msgs: S.msgs, render_ms_p50: pct(S.costs, 50), render_ms_p99: p99,
     render_ms_max: S.costs.length ? Math.max(...S.costs) : null, seq_missed: S.seqGaps, dpr: window.devicePixelRatio, w: innerWidth, h: innerHeight, connected: S.connected, at: Date.now() }) }).catch(() => {});
   if (dt > 10) { S.rafTicks = 0; tick0 = performance.now(); } }, 1000);
-applyMode(OM.mode, false); fitAll(); logEv('info', 'Page loaded'); renderLog(); if (REPLAY_URL) { startReplay(REPLAY_URL); $('btnTest').disabled = true; $('btnTest').title = 'Replays cannot run a self-test'; document.querySelector('.statusbar span:last-child').textContent = 'REPLAY · recorded data, not live'; } else connect(); requestAnimationFrame(loop);
+initTips(); applyMode(OM.mode, false); fitAll(); OM.ready = true; logEv('info', 'Page loaded'); renderLog(); if (REPLAY_URL) { startReplay(REPLAY_URL); $('btnTest').disabled = true; $('btnTest').title = 'Replays cannot run a self-test'; document.querySelector('.statusbar span:last-child').textContent = 'REPLAY · recorded data, not live'; } else connect(); requestAnimationFrame(loop);
