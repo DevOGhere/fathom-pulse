@@ -18,6 +18,7 @@ from typing import Optional
 STALL_OPEN_S, STALL_CLOSE_S = 3.0, 1.0
 Z_RATE, RATE_RATIO, MIN_BASE_RATE, BASE_S, FAST_S = 4.0, 0.5, 3.0, 60, 5
 LAG_FLOOR, Z_LAG, LAG_SECONDS = 200, 5.0, 3
+DRIFT_MIN_MS, Z_DRIFT, DRIFT_RATIO = 20.0, 5.0, 1.5     # latency_drift: needs >= +20 ms AND > 1.5x the preceding minute AND > 5 robust sigma
 KEEP = 40
 
 
@@ -26,6 +27,7 @@ class Obs:
     t_ms: int
     feeds: dict          # "venue/symbol" -> {"rate": updates in the last 1 s (int), "age_s": seconds since last record ever, or None}
     lag: Optional[int]   # processor lag in messages, None if unavailable
+    lat_ms: Optional[float] = None    # median per-record pipeline latency over the last 10 s, calibration-induced records excluded; None if too few records
     induced: bool = False
 
 
@@ -60,6 +62,7 @@ class Detector:
         self.done: deque = deque(maxlen=KEEP)
         self._n = 0
         self._lag_run = 0
+        self.lats: deque = deque(maxlen=BASE_S + 5)
         self._cool: dict[str, int] = {}      # seconds left after a stall during which rate_drop is not judged (its zeros are the stall's, not a second incident)
 
     # ---- helpers ----
@@ -142,6 +145,26 @@ class Detector:
                 if self._lag_run == 0 and o.lag < thr * 0.5:
                     self._end(key, o)
             self.lags.append(o.lag)
+        # latency drift: the pipeline got slower while records still flow
+        if o.lat_ms is not None:
+            self.lats.append(o.lat_ms)
+            base, fast = list(self.lats)[:-5], list(self.lats)[-5:]
+            key = ("latency_drift", None)
+            if len(base) >= 30 and len(fast) == 5:
+                med, sig = _robust(base)
+                mean_fast = sum(fast) / 5
+                rise = mean_fast - med
+                if key not in self.open and rise >= max(DRIFT_MIN_MS, Z_DRIFT * sig) and mean_fast > DRIFT_RATIO * med:
+                    self._start("latency_drift", None, o, "warning",
+                                ("Induced: Pulse was told to slow its own pipeline on purpose (incident demo)." if o.induced else
+                                 f"Per-record pipeline latency rose to {mean_fast:.0f} ms from a normal {med:.0f} ms while records keep flowing. "
+                                 + ("The processor has no backlog, so look at the stages in the Anatomy panel: Pulse can show which stage grew." if (o.lag is not None and o.lag < LAG_FLOOR) else "The processor is behind, which would explain it.")),
+                                {"latency_now_ms": round(mean_fast, 1), "latency_normal_ms": round(med, 1)})
+                elif key in self.open:
+                    ev = self.open[key].evidence
+                    ev["peak_ms"] = round(max(ev.get("peak_ms", 0), mean_fast), 1)
+                    if rise < max(DRIFT_MIN_MS / 2, 2.5 * sig):
+                        self._end(key, o)
         return [("open", v) for k, v in self.open.items() if before.get(k) != v.id] + \
                [("close", v) for v in list(self.done)[-3:] if v.end_ms == o.t_ms]
 

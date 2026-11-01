@@ -240,7 +240,7 @@ function renderCal(f) {
 }
 $('btnInduce').addEventListener('click', () => { $('btnInduce').disabled = true; fetch('/incident/induce?seconds=8', { method: 'POST' }).catch(() => {}); setTimeout(() => { $('btnInduce').disabled = !!S.replay; }, 9000); });
 $('btnTest').addEventListener('click', () => { $('btnTest').disabled = true; fetch('/calibrate', { method: 'POST' }).catch(() => {}); });
-const INC_NAME = { stall: 'Feed stalled', rate_drop: 'Update rate collapsed', lag_spike: 'Processor falling behind' };
+const INC_NAME = { latency_drift: 'Pipeline got slower', stall: 'Feed stalled', rate_drop: 'Update rate collapsed', lag_spike: 'Processor falling behind' };
 function renderIncidents(f) {
   const box = $('incs'), list = (f.incidents || []).slice().sort((a, b) => b.start_ms - a.start_ms); box.textContent = '';
   if (!list.length) { box.append(el('div', 'empty', 'No incidents in this session.')); return; }

@@ -123,9 +123,11 @@ class Hub:
                     la = self.agg.last_consume_wall_ns(v, sy)
                     feeds[f"{v}/{sy}"] = {"rate": len(self.agg.window(v, sy, now_ns - 1_000_000_000)),
                                           "age_s": None if la is None else max(0.0, (now_ns - la) / 1e9)}
+                lat = [e[1] + e[2] + e[3] for v, sy in self.agg.keys() for e in self.agg.stage_samples(v, sy, now_ns - 10_000_000_000) if not e[4]]
+                lat_ms = sorted(lat)[len(lat) // 2] if len(lat) >= 10 else None
                 lag = self._lag.get_lag()
                 for kind, inc in self.detector.update(Obs(now_ns // 1_000_000, feeds, lag.get("total") if lag.get("ok") else None,
-                                                          time.monotonic() < self._induced_until)):
+                                                          lat_ms, time.monotonic() < self._induced_until or self.injecting() is not None)):
                     label = "Incident opened" if kind == "open" else "Incident cleared"
                     self.log_event("warning" if kind == "open" else "good", f"{label}: {inc.kind}{' ' + inc.feed if inc.feed else ''}: {inc.cause}"[:220])
             except Exception as e:

@@ -7,7 +7,7 @@ A, B = "binance/btcusdt", "coinbase/btcusd"
 def run(det, secs, *, ra=10, rb=16, age_a=0.1, age_b=0.1, lag=5, t0=0, induced=False):
     ev = []
     for i in range(secs):
-        ev += det.update(Obs((t0 + i) * 1000, {A: {"rate": ra, "age_s": age_a}, B: {"rate": rb, "age_s": age_b}}, lag, induced))
+        ev += det.update(Obs((t0 + i) * 1000, {A: {"rate": ra, "age_s": age_a}, B: {"rate": rb, "age_s": age_b}}, lag, induced=induced))
     return ev
 
 
@@ -82,3 +82,39 @@ def test_recovery_after_a_stall_is_not_reported_as_a_second_rate_drop_incident()
     run(d, 8, ra=0, age_a=5, t0=60)                  # stall opens
     run(d, 12, ra=10, age_a=0.2, t0=68)              # recovery: the fast window still holds zeros for ~5 s
     assert all(i["kind"] == "stall" for i in d.snapshot()), [(i["kind"], i["feed"]) for i in d.snapshot()]
+
+
+def run_lat(det, secs, lat, t0, **kw):
+    ev = []
+    for i in range(secs):
+        ev += det.update(Obs((t0 + i) * 1000, {A: {"rate": 10, "age_s": 0.1}, B: {"rate": 16, "age_s": 0.1}}, 5, lat_ms=lat, **kw))
+    return ev
+
+
+def test_slow_latency_rise_is_detected_while_records_keep_flowing():
+    d = Detector()
+    run_lat(d, 60, 20.0, 0)
+    run_lat(d, 8, 90.0, 60)
+    assert [i["kind"] for i in d.snapshot()] == ["latency_drift"]
+    inc = d.snapshot()[0]
+    assert "from a normal 20 ms" in inc["cause"] and inc["evidence"]["latency_normal_ms"] == 20.0
+    assert inc["evidence"]["peak_ms"] >= 80.0                       # the opening text is the first crossing; the peak is kept
+    run_lat(d, 10, 20.0, 68)
+    assert d.snapshot()[0]["end_ms"] is not None
+
+
+def test_small_or_proportionally_small_latency_changes_are_not_drift():
+    d = Detector()
+    run_lat(d, 60, 20.0, 0)
+    run_lat(d, 10, 35.0, 60)                       # +15 ms: under the 20 ms floor
+    assert d.snapshot() == []
+    d2 = Detector()
+    run_lat(d2, 60, 400.0, 0); run_lat(d2, 10, 430.0, 60)   # +30 ms but only 1.07x of a slow baseline
+    assert d2.snapshot() == []
+
+
+def test_drift_during_a_deliberate_test_is_labelled_induced():
+    d = Detector()
+    run_lat(d, 60, 20.0, 0)
+    run_lat(d, 8, 100.0, 60, induced=True)
+    assert d.snapshot()[0]["induced"] and d.snapshot()[0]["cause"].startswith("Induced")
