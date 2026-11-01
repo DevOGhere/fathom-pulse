@@ -12,6 +12,7 @@ from typing import Optional
 
 from pulse.api.calibration import Calibrator
 from pulse.api.frames import build_frame
+from pulse.api.incidents import Detector, Obs
 from pulse.ingest.consumer import IngestConsumer
 from pulse.ingest.lag import LagMonitor
 from pulse.ingest.rings import Aggregator, DerivedRec, TradeRec
@@ -43,13 +44,15 @@ class Hub:
         self.inj3_actual_ms: list[float] = []
         self._inject_stage: Optional[int] = None
         self._tasks: list[asyncio.Task] = []
+        self.detector = Detector()
+        self._induced_until = 0.0          # monotonic seconds; incidents overlapping it are labelled induced
 
     async def start(self) -> None:
         loop = asyncio.get_running_loop()
         self._ic = IngestConsumer(loop, self._queue)
         self._ic.start()
         self._lag.start()
-        self._tasks = [asyncio.create_task(self._pump()), asyncio.create_task(self._closer()), asyncio.create_task(self._ticker()), asyncio.create_task(self.calibrator.loop())]
+        self._tasks = [asyncio.create_task(self._pump()), asyncio.create_task(self._closer()), asyncio.create_task(self._ticker()), asyncio.create_task(self.calibrator.loop()), asyncio.create_task(self._incident_loop())]
 
     async def stop(self) -> None:
         for t in self._tasks:
@@ -101,6 +104,33 @@ class Hub:
                 "seen": sum(ic.counts.values()) if ic else 0, "decoded": sum(ic.decoded.values()) if ic else 0,
                 "poll_alive": bool(ic and ic._thread and ic._thread.is_alive())}
 
+    def induce_incident(self, seconds: float) -> dict:
+        """Provoke a real, deliberate feed stall: every record is dropped at ingest for `seconds`. Detector must notice and say 'induced'."""
+        seconds = min(max(seconds, 3.0), 30.0)
+        self._induced_until = time.monotonic() + seconds + 4.0      # + tail so the recovery close is labelled too
+        if self._ic:
+            self._ic.drop_for(seconds)
+        self.log_event("warning", f"Incident demo: dropping all feed records for {seconds:.0f} s on purpose")
+        return {"seconds": seconds, "at_ms": int(time.time() * 1000)}
+
+    async def _incident_loop(self) -> None:
+        while True:
+            await asyncio.sleep(1.0)
+            try:
+                now_ns = time.time_ns()
+                feeds = {}
+                for v, sy in self.agg.keys():
+                    la = self.agg.last_consume_wall_ns(v, sy)
+                    feeds[f"{v}/{sy}"] = {"rate": len(self.agg.window(v, sy, now_ns - 1_000_000_000)),
+                                          "age_s": None if la is None else max(0.0, (now_ns - la) / 1e9)}
+                lag = self._lag.get_lag()
+                for kind, inc in self.detector.update(Obs(now_ns // 1_000_000, feeds, lag.get("total") if lag.get("ok") else None,
+                                                          time.monotonic() < self._induced_until)):
+                    label = "Incident opened" if kind == "open" else "Incident cleared"
+                    self.log_event("warning" if kind == "open" else "good", f"{label}: {inc.kind}{' ' + inc.feed if inc.feed else ''}: {inc.cause}"[:220])
+            except Exception as e:
+                self.last_tick_error = f"incident loop: {type(e).__name__}: {e}"[:200]
+
     async def _pump(self) -> None:
         while True:
             loop = asyncio.get_running_loop()
@@ -131,7 +161,7 @@ class Hub:
                 self.seq += 1
                 self.agg.record_stage3(time.monotonic_ns())      # stage 3 = consume -> THIS frame build
                 frame = build_frame(self.agg, self.seq, time.time_ns(), self._ic.bridge.mono_to_wall_ns,
-                                    self._lag.get_lag(), self.ingest_stats(), self.calibrator.snapshot(), self.events[:12])
+                                    self._lag.get_lag(), self.ingest_stats(), self.calibrator.snapshot(), self.events[:12], self.detector.snapshot())
                 for c in self.clients:
                     if c.queue.full():
                         try:

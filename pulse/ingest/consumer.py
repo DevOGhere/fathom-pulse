@@ -84,6 +84,8 @@ class IngestConsumer:
         self.sample_derived: Optional[md.DerivedFeatures] = None
         self.bridge = ClockBridge()
         self._inject2_ns = 0
+        self._drop_until_ns = 0
+        self.induced_drops = 0                           # records deliberately discarded by the incident demo
         self.inj_actual_ms: list[float] = []          # ground-truth injected delay per released message (stage-2 tests)
 
     def start(self) -> None:
@@ -106,6 +108,10 @@ class IngestConsumer:
     # later, so the production stage-2 maths sees a real delay. Real data is delayed too; the window is labelled `induced`.
     def set_inject2(self, delay_ms: float) -> None:
         self._inject2_ns = int(delay_ms * 1e6)
+
+    def drop_for(self, seconds: float) -> None:
+        """Incident demo: discard every record for `seconds`, as if the feed had died. Counted, never silent."""
+        self._drop_until_ns = time.monotonic_ns() + int(seconds * 1e9) if seconds > 0 else 0
 
     def _run(self) -> None:
         c = Consumer(self._conf)
@@ -153,6 +159,9 @@ class IngestConsumer:
             return
         topic = m.topic()
         self.counts[topic] += 1
+        if self._drop_until_ns and mono < self._drop_until_ns:
+            self.induced_drops += 1
+            return
         rec = self._decode(topic, m.value(), m.timestamp()[1], mono, wall, induced)
         if rec is not None:
             self.decoded[topic] += 1

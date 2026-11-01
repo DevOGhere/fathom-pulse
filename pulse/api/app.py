@@ -60,6 +60,17 @@ async def calibrate(stage: int = 0):
     return await hub.calibrator.run_once(stage or None)
 
 
+@app.post("/incident/induce")
+async def incident_induce(seconds: float = 8.0):
+    """Incident demo: drop all feed records for N seconds (3-30). The detector must open an incident labelled induced, then clear it."""
+    return hub.induce_incident(seconds)
+
+
+@app.get("/incidents")
+async def incidents():
+    return hub.detector.snapshot()
+
+
 @app.get("/calibration")
 async def calibration():
     return hub.calibrator.snapshot()

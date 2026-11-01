@@ -33,7 +33,7 @@ def _stage(vals: list[float]) -> dict:
 
 
 def build_frame(agg: Aggregator, seq: int, now_wall_ns: int, mono_to_wall, lag: dict, ingest: dict,
-                calibration: Optional[dict] = None, events: Optional[list] = None) -> dict:
+                calibration: Optional[dict] = None, events: Optional[list] = None, incidents: Optional[list] = None) -> dict:
     """`mono_to_wall` is ClockBridge.mono_to_wall_ns (injected so this stays a pure function)."""
     series: dict = {}
     newest_consume = None
@@ -104,5 +104,5 @@ def build_frame(agg: Aggregator, seq: int, now_wall_ns: int, mono_to_wall, lag: 
         "v": SCHEMA_VERSION, "seq": seq, "ts_ms": now_wall_ns // 1_000_000,
         "pulse_age_ms": None if newest_consume is None else round((now_wall_ns - newest_consume) / 1e6, 2),
         "lag": lag, "ingest": ingest, "series": series, "slo": slo,
-        "calibration": calibration, "events": events or [], "induced": bool(calibration and calibration.get("injecting")),
+        "calibration": calibration, "events": events or [], "incidents": incidents or [], "induced": bool(calibration and calibration.get("injecting")),
     }
