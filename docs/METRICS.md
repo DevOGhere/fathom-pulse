@@ -54,3 +54,11 @@ Every number on screen has a definition here and a rule for what it is NOT. Item
 ## pulse.fv.1 (`/features/latest`, `/features/window`) — 2026-11-01
 
 Spec and rules live in the docstring of `pulse/api/features.py`; the field list is frozen by `tests/test_features.py` (GOLDEN). Closed 1 s bins only; latest and window share one shape; empty seconds and the effective-spread sentinel are null; `empty` and `induced` flags let a consumer drop them. Provenance: `derived_lag_ms_p50` is the median per-record pipeline latency of that second (stages 1-3, tick wait excluded), `pulse_age_ms` is `now - bin close` at request time. **Retention is the in-memory ring only (5 min / 300 bins), not the 30 min + ClickHouse in the original plan**: `/history` and the ClickHouse stitch are an extension. There is no model in Pulse; FathomFlow consumes this.
+
+## Incidents (`pulse/api/incidents.py`) — 2026-11-01
+
+Evaluated once a second on measured data; frames carry `incidents` (last 12 closed + all open); `GET /incidents`; shaded on the shared timeline (red = real, orange = induced).
+- **stall**: no derived record for > 3 s per feed (clears under 1 s; critical past 10 s). **rate_drop**: 5 s mean rate is a robust outlier (median/MAD z < -4) and < 50% of the preceding 60 s median, judged only when that baseline is >= 3/s and never while a stall is open or within 6 s after one (its zeros belong to the stall). **lag_spike**: processor lag above max(200, median + 5 robust sigma) for 3 s in a row.
+- **Cause text says only what is measured.** Silent feed + no processor backlog => "upstream of Fathom's processor (exchange feed, network or producer)", and whether one feed or both went quiet. With a backlog it says the cause is not clear from Pulse's side. It never names an exchange or a machine.
+- **Induced demo**: `POST /incident/induce?seconds=N` (3-30) drops every record at ingest. Incidents overlapping it are labelled **induced**; the gate (`python -m pulse.api.incident_gate`) needs open <= 7 s, induced label, clear <= 10 s: first run 3/3 (opened 3.3-3.7 s, cleared 0.3-0.7 s).
+- Not claimed: detection of a slowly rising latency (no drift rule yet), or anything about exchange-side causes. This session's real feed flapped (producer WebSocket keepalive timeouts), so real, un-induced incidents are expected on this machine.
