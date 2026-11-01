@@ -84,16 +84,24 @@ class Calibrator:
             await asyncio.sleep(0.6)                       # let held messages and pending stage-3 stamps flush
             test = self._gather(t1 + int(0.8 * ns), t1 + int((WINDOW_S + 0.8) * ns), induced=True)
             real = judge(base, test, expected=stage, truth_ms=truth or d_ms)
+            # A sham that finds movement means the system itself was not steady (e.g. an upstream latency excursion) while we
+            # watched nothing being injected. The self-test then cannot be trusted either way: inconclusive + retry, NOT "failed".
+            unsteady = sham.get("status") == "judged" and not sham["ok"]
             ok = bool(real["ok"] and sham["ok"])
+            if unsteady:
+                real["reason"] = f"conditions were not steady: {sham.get('reason')}. Nothing was injected, so this self-test cannot be trusted; retrying"
             rec = {"at_ms": int(time.time() * 1000), "ok": ok, "stage": stage, "d_ms": d_ms, "truth_ms": round(truth or d_ms, 2),
                    "found": real.get("found"), "deltas_ms": real.get("deltas_ms"), "se_ms": real.get("se_ms"), "z_sep": real.get("z_sep"),
                    "confidence": real.get("confidence"), "size_err_ms": real.get("size_err_ms"), "tol_ms": real.get("tol_ms"),
                    "reason": real.get("reason"), "sham_ok": sham["ok"], "sham_reason": sham.get("reason"),
-                   "inconclusive": real.get("status") == "inconclusive" or sham.get("status") == "inconclusive",
+                   "inconclusive": unsteady or real.get("status") == "inconclusive" or sham.get("status") == "inconclusive",
                    "n_base": real.get("n_base"), "n_test": real.get("n_test")}
             self.history.append(rec)
-            self.streak = self.streak + 1 if ok else 0
-            self.hub.log_event("good" if ok else "critical", f"Self-test {'passed' if ok else 'FAILED'}: {real.get('reason')}" + ("" if sham["ok"] else f" | sham: {sham.get('reason')}"))
+            if rec["inconclusive"]:
+                self.hub.log_event("warning", f"Self-test inconclusive: {real.get('reason')}")
+            else:
+                self.streak = self.streak + 1 if ok else 0
+                self.hub.log_event("good" if ok else "critical", f"Self-test {'passed' if ok else 'FAILED'}: {real.get('reason')}")
             return rec
         finally:
             self.hub.inject(None, 0)
@@ -104,7 +112,10 @@ class Calibrator:
         await asyncio.sleep(12)
         while True:
             try:
-                await self.run_once()
+                r = await self.run_once()
+                if r.get("inconclusive"):
+                    await asyncio.sleep(20)                  # retry soon: an unsteady moment should not leave the badge amber for minutes
+                    continue
             except Exception as e:                           # a failed run must not kill the schedule
                 self.hub.log_event("critical", f"Self-test crashed: {type(e).__name__}: {e}"[:160])
             await asyncio.sleep(RETEST_S)

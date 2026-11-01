@@ -19,6 +19,7 @@ Rules
 from __future__ import annotations
 
 import math
+import time
 from collections import deque
 from dataclasses import asdict, dataclass
 from typing import NamedTuple, Optional
@@ -79,7 +80,7 @@ class Bin:
     trade_count_1s: int
     avg_trade_size_60s: Optional[float]
     realized_vol_60s: Optional[float]
-    stages: Optional[dict] = None      # per-bin stage p50/p99 (ms): s1 recv->derived, s2 derived->consume, s3 consume->frame build, tot
+    stages: Optional[dict] = None      # per-bin stage p50/p99 (ms): s1 recv->derived, s2 derived->consume, s3 consume->ready for a frame, tw tick wait (ready->frame build), tot (= s1+s2+s3)
     induced: bool = False              # a calibration delay was injected during this second; excluded from SLO/histograms
 
     @property
@@ -94,7 +95,7 @@ class Bin:
 
 
 class _Accum:
-    __slots__ = ("n", "mid", "micro", "obi1", "obi5", "bid", "ask", "eff", "n_trades", "trade_qty", "s1", "s2", "s3", "tot", "induced", "neg")
+    __slots__ = ("n", "mid", "micro", "obi1", "obi5", "bid", "ask", "eff", "n_trades", "trade_qty", "s1", "s2", "s3", "tw", "tot", "induced", "neg")
 
     def __init__(self) -> None:
         self.n = 0
@@ -104,6 +105,7 @@ class _Accum:
         self.s1: list[float] = []
         self.s2: list[float] = []
         self.s3: list[float] = []
+        self.tw: list[float] = []
         self.tot: list[float] = []
         self.induced = False
         self.neg = 0
@@ -120,8 +122,8 @@ class _Key:
         # trailing window of (close_mid_or_None, trade_count, trade_qty) per closed bin
         self.win: deque[tuple] = deque(maxlen=VOL_WINDOW)
         self.trades: deque[TradeRec] = deque(maxlen=TRADE_TAIL_CAP)
-        self.stages: deque[list] = deque(maxlen=STAGE_RING_CAP)   # [consume_wall_ns, s1, s2, s3|None, induced]
-        self.pending: list = []                                    # (entry, consume_mono_ns, second) awaiting frame-build stamp
+        self.stages: deque[list] = deque(maxlen=STAGE_RING_CAP)   # [consume_wall_ns, s1, s2, s3 (consume->ready)|None, induced, tick_wait|None]
+        self.pending: list = []                                    # (entry, consume_mono_ns, second, ready_mono_ns) awaiting frame-build stamp
 
 
 class Aggregator:
@@ -162,20 +164,23 @@ class Aggregator:
         a.s2.append(s2)
         a.neg += (s1 < 0) + (s2 < 0)
         a.induced = a.induced or r.induced
-        entry = [r.consume_wall_ns, s1, s2, None, r.induced]
+        entry = [r.consume_wall_ns, s1, s2, None, r.induced, None]
         k.stages.append(entry)
-        k.pending.append((entry, r.consume_mono_ns, r.consume_wall_ns // NS))
+        # ready = in the aggregator, waiting for the next scheduled frame build. ready -> build is tick wait (design, <= 100 ms)
+        k.pending.append((entry, r.consume_mono_ns, r.consume_wall_ns // NS, time.monotonic_ns()))
         return True
 
     def record_stage3(self, build_mono_ns: int) -> None:
-        """Stage 3 = consume -> the 10Hz frame build that first includes the record. Called by the ticker right before it builds."""
+        """Stage 3 = consume -> ready (in the aggregator). Tick wait = ready -> the 10Hz frame build that first includes the record. Called by the ticker right before it builds."""
         for k in self._keys.values():
-            for entry, cmono, sec in k.pending:
-                s3 = (build_mono_ns - cmono) / 1e6
-                entry[3] = s3
+            for entry, cmono, sec, ready in k.pending:
+                s3 = (ready - cmono) / 1e6                    # stage 3 = consume -> ready in the aggregator (exact: no tick quantisation)
+                tw = (build_mono_ns - ready) / 1e6            # tick wait: ready -> the scheduled frame build (cadence, not processing)
+                entry[3], entry[5] = s3, tw
                 a = k.open.get(sec)
                 if a is not None:
                     a.s3.append(s3)
+                    a.tw.append(tw)
                     a.tot.append(entry[1] + entry[2] + s3)
                     a.neg += s3 < 0
             k.pending.clear()
@@ -231,7 +236,7 @@ class Aggregator:
                 return {"p50": None, "p99": None}
             q = sorted(v)
             return {"p50": round(q[len(q) // 2], 3), "p99": round(q[min(len(q) - 1, int(0.99 * len(q)))], 3)}
-        return {"s1": st(a.s1), "s2": st(a.s2), "s3": st(a.s3), "tot": st(a.tot), "neg": a.neg, "n": len(a.s1)}
+        return {"s1": st(a.s1), "s2": st(a.s2), "s3": st(a.s3), "tw": st(a.tw), "tot": st(a.tot), "neg": a.neg, "n": len(a.s1)}
 
     @staticmethod
     def _vol(k: _Key) -> Optional[float]:

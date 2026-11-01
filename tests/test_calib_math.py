@@ -72,3 +72,16 @@ def test_too_few_samples_is_inconclusive_not_a_pass():
     b, t = windows({2: 80.0}, n_test=5)
     v = judge(b, t, expected=2, truth_ms=80.0)
     assert v["status"] == "inconclusive" and v["ok"] is False
+
+
+def test_tiny_but_significant_drift_is_not_a_sham_false_alarm():
+    # the 2026-11-01 live false alarm: an upstream stage drifted ~2 ms (> 3 se). Real, but not a delay worth alarming on.
+    b, t = windows({1: 2.1}, n_test=400)
+    r = judge(b, t, expected=None)
+    assert r["deltas_ms"][1] > 3 * r["se_ms"][1]      # it IS statistically significant ...
+    assert r["ok"] is True                            # ... and still not an alarm
+
+
+def test_a_real_sized_shift_in_a_sham_is_still_an_alarm():
+    b, t = windows({1: 20.0})
+    assert judge(b, t, expected=None)["ok"] is False

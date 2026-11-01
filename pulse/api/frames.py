@@ -17,7 +17,7 @@ from pulse.ingest.rings import NS, Aggregator
 SCHEMA_VERSION = 1
 HIST_BINS = 60
 TRADES_IN_FRAME = 12
-SLO_TARGET_MS = 100.0     # p99 of per-record recv -> frame-build total over 60 s
+SLO_TARGET_MS = 100.0     # p99 of per-record PIPELINE total (recv -> ready for a frame, tick wait excluded) over 60 s
 
 
 def _pct(vals: list[float], p: float) -> Optional[float]:
@@ -75,7 +75,7 @@ def build_frame(agg: Aggregator, seq: int, now_wall_ns: int, mono_to_wall, lag: 
                 "avg_trade_size_60s": bins[-1].avg_trade_size_60s,
                 "stages": {k2: [None if b.stages is None else b.stages[k1][pp] for b in bins]
                            for k1, k2, pp in [("s1", "s1_p50", "p50"), ("s1", "s1_p99", "p99"), ("s2", "s2_p50", "p50"), ("s2", "s2_p99", "p99"),
-                                              ("s3", "s3_p50", "p50"), ("s3", "s3_p99", "p99"), ("tot", "tot_p50", "p50"), ("tot", "tot_p99", "p99")]},
+                                              ("s3", "s3_p50", "p50"), ("s3", "s3_p99", "p99"), ("tw", "tw_p50", "p50"), ("tw", "tw_p99", "p99"), ("tot", "tot_p50", "p50"), ("tot", "tot_p99", "p99")]},
                 "induced": [b.induced for b in bins],
             }
             ne = [b for b in bins if not b.empty]
@@ -83,11 +83,15 @@ def build_frame(agg: Aggregator, seq: int, now_wall_ns: int, mono_to_wall, lag: 
                            "sentinel_rate_60": None if not ne else round(sum(1 for b in ne if b.effective_spread is None) / len(ne), 3),
                            "stall_s": None if not win and not bins else round(max(0.0, (now_wall_ns - (win[-1].consume_wall_ns if win else (bins[-1].close_ts_ms * 1_000_000))) / 1e9), 2)}
         series[f"{venue}/{symbol}"] = entry
-    # SLO from per-RECORD totals (recv -> frame build), not a sum of per-stage p99s; induced seconds excluded
-    tots = sorted(e[1] + e[2] + e[3] for v, sy in agg.keys() for e in agg.stage_samples(v, sy, now_wall_ns - 60 * NS) if not e[4])
-    slo = {"target_ms": SLO_TARGET_MS, "window_s": 60, "n": len(tots),
-           "p99_ms": round(tots[min(len(tots) - 1, int(0.99 * len(tots)))], 2) if tots else None,
-           "met": None if not tots else tots[min(len(tots) - 1, int(0.99 * len(tots)))] < SLO_TARGET_MS}
+    # SLO from per-RECORD totals, not a sum of per-stage p99s; induced seconds excluded. Pipeline = recv -> ready for a frame:
+    # the scheduled 10 Hz tick wait (<= 100 ms, a display-cadence choice) is reported beside it, never hidden inside it.
+    live = [e for v, sy in agg.keys() for e in agg.stage_samples(v, sy, now_wall_ns - 60 * NS) if not e[4] and e[5] is not None]
+    tots = [e[1] + e[2] + e[3] for e in live]
+    p99 = _pct(tots, 99)
+    slo = {"target_ms": SLO_TARGET_MS, "window_s": 60, "n": len(tots), "p99_ms": p99,
+           "met": None if p99 is None else p99 < SLO_TARGET_MS,
+           "tick_wait_p50_ms": _pct([e[5] for e in live], 50), "tick_wait_p99_ms": _pct([e[5] for e in live], 99),
+           "end_to_frame_p99_ms": _pct([e[1] + e[2] + e[3] + e[5] for e in live], 99)}
     return {
         "v": SCHEMA_VERSION, "seq": seq, "ts_ms": now_wall_ns // 1_000_000,
         "pulse_age_ms": None if newest_consume is None else round((now_wall_ns - newest_consume) / 1e6, 2),

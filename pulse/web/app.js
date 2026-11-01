@@ -177,7 +177,7 @@ $('cAnat').addEventListener('pointermove', e => { const h = hitAt(e), s = sel();
 $('cAnat').addEventListener('pointerleave', () => { tipEl.style.display = 'none'; });
 $('cAnat').addEventListener('click', e => { const h = hitAt(e), s = sel(), pin = $('pin'); if (!h || !s) { S.pinned = null; pin.textContent = 'Click a bar to pin one second and read it stage by stage.'; S.dirty = true; return; }
   S.pinned = s.bins.start_s[h.i]; const st = s.bins.stages, p = 'p' + S.pct; const tot = st['s1_' + p][h.i] + st['s2_' + p][h.i] + st['s3_' + p][h.i];
-  pin.textContent = `Pinned. ${S.pct === 99 ? 'P99' : 'P50'} server total ${tot.toFixed(1)} ms (stages 1-3). ${attribution(s, h.i)}${s.bins.induced[h.i] ? ' This second was part of a self-test, so the extra time is deliberate.' : ''}`; S.dirty = true; });
+  pin.textContent = `Pinned. ${S.pct === 99 ? 'P99' : 'P50'} server total ${tot.toFixed(1)} ms (stages 1-3, before the wait for the next 10 Hz frame, median ${st['tw_p50'][h.i] == null ? '—' : st['tw_p50'][h.i].toFixed(0)} ms). ${attribution(s, h.i)}${s.bins.induced[h.i] ? ' This second was part of a self-test, so the extra time is deliberate.' : ''}`; S.dirty = true; });
 $('pctSeg').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; S.pct = +b.dataset.p; document.querySelectorAll('#pctSeg button').forEach(x => x.setAttribute('aria-pressed', x === b)); S.dirty = true; });
 
 function renderCal(f) {
@@ -196,7 +196,7 @@ function renderCal(f) {
   $('induced').hidden = !f.induced;
   const sl = f.slo, t = $('tSlo'), unv = c.status !== 'valid';
   t.textContent = !sl || sl.met == null ? '—' : unv ? 'Unverified' : sl.met ? 'Met' : 'Breached'; t.style.color = unv && sl && sl.met != null ? 'var(--status-warning)' : sl && sl.met === false ? 'var(--status-critical)' : '';
-  $('tSloS').textContent = sl && sl.p99_ms != null ? `p99 ${sl.p99_ms} ms vs ${sl.target_ms} · ${sl.n} records${unv ? ' · calibration not valid' : ''}` : 'needs data';
+  $('tSloS').textContent = sl && sl.p99_ms != null ? `pipeline p99 ${sl.p99_ms} ms vs ${sl.target_ms} · + ${sl.tick_wait_p50_ms} ms median wait for the next 10 Hz frame (by design) · ${sl.n} records${unv ? ' · calibration not valid' : ''}` : 'needs data';
 }
 $('btnTest').addEventListener('click', () => { $('btnTest').disabled = true; fetch('/calibrate', { method: 'POST' }).catch(() => {}); });
 function renderDq(f) {

@@ -41,3 +41,12 @@ Every number on screen has a definition here and a rule for what it is NOT. Item
 - Calibration (self-test, confidence, expiry) **(Day 4)**. Until it passes, latency figures are unverified.
 - Exchange-side latency: Binance book events carry `event_ts_ns = 0`, so the exchange stage is null there, never a fake zero.
 - Sequence gaps, depth beyond best bid/ask, incident detection **(Day 6)**.
+
+## Latency SLO (pipeline vs tick wait) — 2026-11-01
+
+- **Stage 3 = consume -> ready for a frame** (record is in the aggregator). Exact: no tick quantisation. Stages 1-3 together are the **pipeline**; SLO: p99 < 100 ms over 60 s, induced (calibration) seconds excluded, from per-record totals (never a sum of per-stage p99s).
+- **Tick wait** = `ready -> the next scheduled 10 Hz frame build` (0-100 ms). A display-cadence choice, not processing: reported beside the SLO (`tick_wait_p50/p99_ms`, per-bin `tw_*`) and never hidden inside it. **End to frame** = pipeline + tick wait (`end_to_frame_p99_ms`).
+- Why the split: stage 3 used to be `consume -> frame build` and (a) read "Breached" structurally (p99 ~121 ms) because the tick wait alone is up to 100 ms, and (b) made calibration biased: Binance derived arrives every 100 ms, the same period as the tick, so arrival is phase-locked to the tick and delaying records by D shifts the tick wait unevenly. Stage-3 size errors were +4 to +10 ms (tolerance ~+-8); after the split they are about +-0.2 ms.
+- First live reading (1416 records): pipeline p99 36.6 ms, tick wait p50 52 / p99 98 ms, end to frame p99 122.8 ms.
+- **Calibration verdicts changed after seeing live failures (post-hoc, disclosed):** (1) detection needs delta >= `MIN_EFFECT_MS` (5 ms) as well as > 3 se: a 2.1 ms / 3.3 se upstream drift was a sham false alarm. (2) A sham that finds movement means the system was not steady (upstream stage 1 moved +11 to +16 ms during a quiet window, twice in ~10 min); that is reported **inconclusive** and retried after 20 s, not "failed". The gate reports every retry.
+- Not measured / not claimed: network time from Pulse to the browser; Pulse is ms-class by design (Python, Kafka hop, 10 Hz cadence), not a µs system.

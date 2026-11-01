@@ -95,3 +95,15 @@ def test_top_of_book_quantities_ride_the_frame():
     a.add_derived(r)
     w = frame(a, 10.2)["series"][f"{V}/{S}"]["window_1s"]
     assert (w["best_bid"], w["best_ask"], w["best_bid_qty"], w["best_ask_qty"]) == (99.5, 100.5, 1.5, 2.5)
+
+
+def test_slo_excludes_scheduled_tick_wait_but_reports_it():
+    a = Aggregator()
+    a.add_derived(rec(10.1, recv=1_000_000, derived=4_000_000, consume_mono=9_000_000))
+    ready = a._keys[(V, S)].pending[0][3]
+    a.record_stage3(ready + 79_000_000)                     # frame built 79 ms after the record was ready
+    slo = frame(a, 10.5)["slo"]
+    e = a._keys[(V, S)].stages[-1]
+    assert slo["tick_wait_p50_ms"] == 79.0
+    assert slo["p99_ms"] == round(3.0 + 5.0 + e[3], 3)      # s1 + s2 + s3 (consume -> ready) = pipeline only
+    assert slo["end_to_frame_p99_ms"] > slo["p99_ms"] + 78  # the full figure stays visible

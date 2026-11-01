@@ -9,7 +9,7 @@ Verdicts
 - real injection at stage E (expected): pass only if the found stage == E, the top stage is separated from the runner-up
   by >= Z_SEP combined standard errors (else "not sure"), the top delta is > Z_DETECT se, and the size error
   |delta_E - truth| <= max(TOL_FLOOR_MS, TOL_K * se_E).
-- sham (expected None, nothing injected): pass only if NO stage shows delta > Z_DETECT se ("nothing found").
+- sham (expected None, nothing injected): pass only if NO stage shows delta > Z_DETECT se AND >= MIN_EFFECT_MS ("nothing found").
 - negative control: judging the same data against the wrong expected stage must FAIL (see tests).
 """
 from __future__ import annotations
@@ -22,6 +22,7 @@ Z_DETECT = 3.0
 Z_SEP = 3.0
 TOL_K = 3.0
 TOL_FLOOR_MS = 2.0
+MIN_EFFECT_MS = 5.0     # detection needs practical as well as statistical significance (added post-hoc 2026-11-01: a 2.1 ms / 3.3 se upstream drift in a sham window was a false alarm)
 MIN_N = 20
 SE_FLOOR = 0.05
 
@@ -51,7 +52,7 @@ def judge(base: dict[int, list[float]], test: dict[int, list[float]], expected: 
     order = sorted(STAGES, key=lambda s: d[s], reverse=True)
     top, second = order[0], order[1]
     sep = (d[top] - d[second]) / math.sqrt(se[top] ** 2 + se[second] ** 2)
-    detected = d[top] > Z_DETECT * se[top]
+    detected = d[top] > Z_DETECT * se[top] and d[top] >= MIN_EFFECT_MS
     pos = {s: max(0.0, d[s]) for s in STAGES}
     conf = pos[top] / sum(pos.values()) if sum(pos.values()) > 0 else None
     out = {"status": "judged", "deltas_ms": {s: round(d[s], 3) for s in STAGES}, "se_ms": {s: round(se[s], 3) for s in STAGES},

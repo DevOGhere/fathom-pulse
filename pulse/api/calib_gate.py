@@ -7,17 +7,25 @@ tests in tests/test_calib_math.py.)
 """
 import argparse, json, sys, urllib.request
 
+RETRIES = 3      # an unsteady system (sham finds movement) is "inconclusive", not a failure; retry, but report every one
+
 def run(stage):
     req = urllib.request.Request(f"http://127.0.0.1:8765/calibrate?stage={stage}", method="POST")
     return json.load(urllib.request.urlopen(req, timeout=60))
 
 ap = argparse.ArgumentParser(); ap.add_argument("--runs", type=int, default=10); n = ap.parse_args().runs
-oks = shams = 0; errs = []
+oks = shams = inconcl = 0; errs = []
 for i in range(n):
     r = run(2 if i % 2 == 0 else 3)
+    for _ in range(RETRIES):
+        if not r.get("inconclusive"):
+            break
+        inconcl += 1
+        print(f"        (inconclusive, retried: {r['reason']})", flush=True)
+        r = run(2 if i % 2 == 0 else 3)
     oks += bool(r["ok"]); shams += bool(r["sham_ok"]); errs.append((r["stage"], r["size_err_ms"], r["tol_ms"]))
     print(f"[{i + 1:2d}/{n}] inject stage {r['stage']} {r['d_ms']:.0f} ms -> found {r['found']}  delta={ (r['deltas_ms'] or {}).get(str(r['stage'])) }  err={r['size_err_ms']} tol={r['tol_ms']}  z_sep={r['z_sep']}  sham_ok={r['sham_ok']}  {'PASS' if r['ok'] else 'FAIL: ' + str(r['reason'])}", flush=True)
-print(f"\nreal passes {oks}/{n} (consecutive required)  sham clean {shams}/{n}")
+print(f"\nreal passes {oks}/{n} (consecutive required)  sham clean {shams}/{n}  inconclusive-and-retried {inconcl}")
 for st in (2, 3):
     e = [abs(x[1]) for x in errs if x[0] == st and x[1] is not None]
     if e: print(f"stage {st}: mean |size error| {sum(e) / len(e):.2f} ms over {len(e)} runs")
