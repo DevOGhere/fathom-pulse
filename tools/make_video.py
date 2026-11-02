@@ -1,4 +1,9 @@
 """Guided demo video from the REAL page:  .venv/bin/python tools/make_video.py <scratch_dir> <out.mp4> [--only N,N] [--base http://127.0.0.1:8765]
+                                                                              [--voice none|say|dir:<folder>] [--voice-name Daniel] [--rate 170]
+Narration (--voice): audio comes FIRST and drives the timing: each scene is held for max(its planned length, narration + 1.2 s), so the
+picture never ends before the sentence does. `say` = macOS built-in voice (no key, no download, robotic). `dir:<folder>` = your own
+recordings, one file per scene named after it (title.wav, whole.m4a, ...; any format ffmpeg reads). An API voice (ElevenLabs, OpenAI TTS)
+plugs in at synth() below: one function that turns text into an audio file. The spoken text is NARRATION[...]; it may only say what the page shows.
 
 Drives headless Chrome over DevTools (same approach as page_probe.py), records each scene with Page.startScreencast,
 overlays captions and a highlight box by injecting DOM into the page (so frames arrive already annotated), then stitches
@@ -51,6 +56,53 @@ CARD = lambda title, sub: ("data:text/html;charset=utf-8," + urllib.parse.quote(
 
 import urllib.parse   # noqa: E402  (CARD uses it at call time)
 
+# What is SAID per scene (docs/DEMO.md rule: nothing the page does not show). Captions stay on screen; this is the voice.
+NARRATION = {
+    "title": "FathomPulse. A live dashboard on Fathom's Kafka pipeline that measures how late it is, and tests itself.",
+    "whole": "Most dashboards pretend to be real-time. This one shows Binance and Coinbase Bitcoin flowing through a Kafka pipeline, and measures every step.",
+    "age": "Every number carries its age. Binance updates about ten times a second, Coinbase about sixteen. If a feed dies, this says how long ago the last update was, instead of showing an empty chart.",
+    "anatomy": "One update's life, split into measured stages: producer to derived, derived to Pulse, Pulse to frame. Real timestamps, not estimates. Click a bar to pause on that second and see every record, with its Kafka partition, offset and size. The last stage, to your screen, is labelled a local estimate.",
+    "slo": "Pipeline latency is judged against a one hundred millisecond target at the ninety-ninth percentile. The wait for the next ten hertz frame is shown separately, because that is a display choice, not processing.",
+    "calib": "Here is the idea I care about. Pulse hides an eighty millisecond delay inside one of its own stages, and checks whether the waterfall finds the right stage and size. A quiet sham run comes first, to prove the test does not cry wolf. It covers Pulse's own stages, not the exchange or the network.",
+    "induce": "Now I break the feed on purpose. Pulse discards every record for eight seconds. The detector opens an incident, labels it induced, and says only what it can actually see. When the feed returns, it clears.",
+    "market": "The market side: mid price and microprice, order book imbalance, top of book and trades. The aggressor side comes from Fathom's own buyer-maker flag.",
+    "replay": "The same page, and the same code path, can replay a recording. Two cold browsers render it byte for byte identically.",
+    "end": "It is millisecond-class by design. Not a microsecond system, and it says so.",
+}
+
+
+def synth(text, out_wav, voice_name, rate):
+    """text -> audio file. Swap this body for an API voice (ElevenLabs / OpenAI TTS): read the key from an env var, never from the repo."""
+    aiff = Path(str(out_wav) + ".aiff")
+    subprocess.run(["say", "-v", voice_name, "-r", str(rate), "-o", str(aiff), text], check=True)
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(aiff), "-ar", "44100", "-ac", "1", str(out_wav)], check=True)
+    aiff.unlink()
+
+
+def audio_for(name, mode, outdir, voice_name, rate):
+    """Returns (audio_path or None, seconds). Audio exists before the picture is recorded because it decides how long the scene lasts."""
+    if mode == "none":
+        return None, 0.0
+    if mode == "say":
+        path = Path(outdir) / f"{name}.voice.wav"
+        synth(NARRATION[name], path, voice_name, rate)
+    else:                                                    # dir:<folder>, the person's own recordings
+        hits = [f for f in Path(mode[4:]).glob(f"{name}.*") if f.suffix.lower() in (".wav", ".m4a", ".mp3", ".aiff", ".aif", ".flac", ".ogg")]
+        if not hits:
+            raise SystemExit(f"--voice dir: no recording for scene '{name}' in {mode[4:]} (expected {name}.wav / .m4a / ...)")
+        path = hits[0]
+    dur = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)], capture_output=True, text=True, check=True).stdout)
+    return path, dur
+
+
+def mux(mp4, audio, outdir):
+    """Put the voice on the scene (0.5 s in, padded with silence to the picture's length). A silent track when there is no voice, so every scene has the same streams and concat can copy."""
+    out = Path(outdir) / (mp4.stem + ".av.mp4")
+    a_in = ["-i", str(audio), "-filter_complex", "[1:a]adelay=500|500,apad[a]"] if audio else ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono", "-filter_complex", "[1:a]anull[a]"]
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(mp4), *a_in, "-map", "0:v", "-map", "[a]", "-shortest", "-c:v", "copy", "-c:a", "aac", "-ar", "44100", "-ac", "1", str(out)], check=True)
+    return out
+
+
 # (url, seconds, [(t, caption)], opts). opts: hl=(css, h3-text), js=[(t, expr)], until=expr (poll, ends scene early), card=True
 def scenes(base):
     live = base + "/"
@@ -64,10 +116,10 @@ def scenes(base):
              clicks=[(5, "#cAnat", 0.62, 0.55)], keys=[(14, "Escape")]),
         dict(name="slo", url=live, dur=10, hl=(None, "Latency distribution"),
              caps=[(0.5, "p99 pipeline latency against a 100 ms target."), (5, "The wait for the next 10 Hz frame is reported separately: a display choice, not processing.")]),
-        dict(name="calib", url=live, dur=45, hl=(None, "Calibration"), until="document.querySelector('#calBadge') && !/running/i.test(document.querySelector('#calBadge').textContent) && window.__ran",
+        dict(name="calib", url=live, dur=38, hl=(None, "Calibration"),
              caps=[(0.5, "Calibration: Pulse hides an 80 ms delay inside one of its own stages and checks whether the waterfall finds the right stage and size."),
                    (14, "A quiet 'sham' window runs first, to check it does not cry wolf."), (30, "The verdict expires; stale, it says so instead of staying green.")],
-             clicks=[(2, "#btnTest", 0.5, 0.5)], js=[(2.1, "window.__ran=true")], tail=6),
+             clicks=[(2, "#btnTest", 0.5, 0.5)], ),
         dict(name="induce", url=live, dur=24, hl=(None, "Incidents"),
              caps=[(0.5, "Now I break the feed on purpose: Pulse discards every record for 8 seconds."), (6, "The detector opens an incident and states only what Pulse can see."), (15, "It clears when the feed returns. Induced events are always labelled.")],
              clicks=[(2, "#btnInduce", 0.5, 0.5)]),
@@ -75,7 +127,7 @@ def scenes(base):
              caps=[(0.5, "The market side: mid, microprice, order-book imbalance, top of book and trades."), (6, "Trade aggressor comes from Fathom's own buyer-maker flag.")],
              js=[(6, "window.__ann.hl(null,'Top of book')")]),
         dict(name="replay", url=base + "/?replay=/static/captures/demo-90s.ndjson", dur=14, caps=[(0.5, "Same page, same code path, from a recording of the live feed. Replay is deterministic.")]),
-        dict(name="end", url=CARD("Ms-class by design", "Not a microsecond system, and it says so. Source: github.com/DevOGhere/fathom-pulse (private for now)."), dur=5, caps=[]),
+        dict(name="end", url=CARD("Ms-class by design", "Not a microsecond system, and it says so. Recorded in headless Chrome on the same laptop that runs the pipeline."), dur=5, caps=[]),
     ]
 
 
@@ -151,6 +203,9 @@ async def main():
     a = sys.argv[1:]; scratch, out = Path(a[0]), Path(a[1])
     only = {int(x) for x in a[a.index("--only") + 1].split(",")} if "--only" in a else None
     base = a[a.index("--base") + 1] if "--base" in a else "http://127.0.0.1:8765"
+    voice = a[a.index("--voice") + 1] if "--voice" in a else "none"
+    voice_name = a[a.index("--voice-name") + 1] if "--voice-name" in a else "Daniel"
+    rate = int(a[a.index("--rate") + 1]) if "--rate" in a else 170
     (scratch / "vid").mkdir(parents=True, exist_ok=True)
     p = subprocess.Popen([CH, "--headless=new", "--no-sandbox", f"--user-data-dir={scratch}/chp_vid", f"--remote-debugging-port={PORT}",
                           f"--window-size={W},{H}", "about:blank"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -165,7 +220,11 @@ async def main():
             parts = []
             for i, sc in enumerate(scenes(base)):
                 if only and i not in only: continue
-                print(f"[{i}] {sc['name']}"); parts.append(await record(c, sc, scratch / "vid"))
+                print(f"[{i}] {sc['name']}")
+                aud, adur = audio_for(sc["name"], voice, scratch / "vid", voice_name, rate)
+                if aud: sc["dur"] = max(sc["dur"], adur + 1.2)         # narration decides the length, never the other way round
+                mp4 = await record(c, sc, scratch / "vid")
+                parts.append(mux(mp4, aud, scratch / "vid") if voice != "none" else mp4)
         (scratch / "vid" / "all.txt").write_text("\n".join(f"file '{m}'" for m in parts))
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(scratch / "vid" / "all.txt"), "-c", "copy", str(out)], check=True)
         print("wrote", out)
