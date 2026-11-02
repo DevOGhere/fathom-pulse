@@ -54,7 +54,7 @@ const OPS = (() => {
     speed: (b, ms) => ({ h: `Speed: ${b.word}`, t: `How long an update takes from reaching Fathom to being ready in Pulse. The slowest 1 in 100 over the last minute took about ${fmtMs(OPS.roundTo(ms, 10))}. Smooth is under 50 ms, Normal under 100, Slow under 200.` }),
     backlog: (b, n) => ({ h: `Backlog: ${b.word}`, t: `Fathom's processor reads updates from a queue, and ${Math.round(n)} are waiting now. Under 50 means it is keeping up; over 200 means everything you see is getting older.` }),
     trust: (st, ageS, ttlS, tol) => ({ h: `Trust: ${st === 'valid' ? 'Verified' : st === 'running' ? 'Checking' : 'Unverified'}`, t: {
-      valid: `Every few minutes Pulse hides a known 80 ms delay inside itself and checks that it can find it. The last check passed ${fmtMs(ageS * 1000)} ago, within ±${tol} ms, and holds for about ${fmtMs(Math.max(0, ttlS - ageS) * 1000)} more.`,
+      valid: `Every few minutes Pulse hides a known 80 ms delay inside itself and checks that it can find it. The last check passed ${fmtMs(ageS * 1000)} ago, within ±${tol} ms, and holds for about ${fmtMs(Math.max(0, ttlS - ageS) * 1000)} more. It covers Pulse's own timing, not the exchange or the network.`,
       running: 'A self-test is running right now. Latency figures are delayed on purpose until it ends.',
       expired: 'The last passing check is too old to rely on. Latency figures are unverified until the next one.',
       failed: 'The last self-test did not find the delay it hid. Treat latency figures as unverified.',

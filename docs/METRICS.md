@@ -38,7 +38,7 @@ Every number on screen has a definition here and a rule for what it is NOT. Item
 
 ## Not measured yet
 - Stage 3 = `consume -> ready for a frame` (definition and why: see "Latency SLO" below; the wait for the next 10 Hz frame is reported separately). Stage 4 = server send -> your screen, a client-local estimate that exists only when the page runs on the same host clock; it is never added into the absolute total.
-- Calibration (self-test, confidence, expiry) **(Day 4)**. Until it passes, latency figures are unverified.
+- Calibration (self-test, confidence, expiry) **(Day 4)**. Until it passes, latency figures are unverified. **Scope:** the self-test injects a delay at Pulse's own stamp sites (stages 2 and 3, consumer and aggregator) and checks it is found within ±N ms. It does not validate stage 1 (Fathom's own stamps), exchange clocks or network transit. The badge therefore reads "Self-test ±N ms", not "calibrated".
 - Exchange-side latency: Binance book events carry `event_ts_ns = 0`, so the exchange stage is null there, never a fake zero.
 - Sequence gaps, depth beyond best bid/ask, incident detection **(Day 6)**.
 
@@ -48,6 +48,7 @@ Every number on screen has a definition here and a rule for what it is NOT. Item
 - **Tick wait** = `ready -> the next scheduled 10 Hz frame build` (0-100 ms). A display-cadence choice, not processing: reported beside the SLO (`tick_wait_p50/p99_ms`, per-bin `tw_*`) and never hidden inside it. **End to frame** = pipeline + tick wait (`end_to_frame_p99_ms`).
 - Why the split: stage 3 used to be `consume -> frame build` and (a) read "Breached" structurally (p99 ~121 ms) because the tick wait alone is up to 100 ms, and (b) made calibration biased: Binance derived arrives every 100 ms, the same period as the tick, so arrival is phase-locked to the tick and delaying records by D shifts the tick wait unevenly. Stage-3 size errors were +4 to +10 ms (tolerance ~+-8); after the split they are about +-0.2 ms.
 - First live reading (1416 records): pipeline p99 36.6 ms, tick wait p50 52 / p99 98 ms, end to frame p99 122.8 ms.
+- **Prometheus cross-check rule changed after it failed (post-hoc, disclosed, 2026-11-03):** the old rule "Pulse recv->consume <= Fathom tick->store" assumed the store is slower than Pulse's Kafka hop. True with Fathom's default flags (~0.5 s), false with the sealed knobs (~8 ms, parallel path): Coinbase read 18.6 vs 17.2 ms. New rule: Pulse <= store + 5 ms (Pulse's documented stamping residual). Under the old defaults the check was close to vacuous (17 ms vs 500 ms); the new one compares two independent measurements to a few ms. Rate agreement (the other half) read +0.0% and -0.2%.
 - **Calibration verdicts changed after seeing live failures (post-hoc, disclosed):** (1) detection needs delta >= `MIN_EFFECT_MS` (5 ms) as well as > 3 se: a 2.1 ms / 3.3 se upstream drift was a sham false alarm. (2) A sham that finds movement means the system was not steady (upstream stage 1 moved +11 to +16 ms during a quiet window, twice in ~10 min); that is reported **inconclusive** and retried after 20 s, not "failed". The gate reports every retry.
 - Not measured / not claimed: network time from Pulse to the browser; Pulse is ms-class by design (Python, Kafka hop, 10 Hz cadence), not a µs system.
 

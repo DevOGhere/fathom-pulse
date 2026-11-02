@@ -248,9 +248,9 @@ function renderCal(f) {
   cb.style.opacity = 1; cb.className = 'badge';
   const tail = L ? ` Confidence ${L.confidence == null ? 'n/a' : Math.round(L.confidence * 100) + '%'} · z-separation ${L.z_sep} · ${c.passed} of ${c.runs} runs passed, ${c.streak} in a row.` : '';
   if (c.status === 'running') { head.textContent = 'Self-test running…'; body.textContent = c.phase || ''; cb.classList.add('warning'); ct.textContent = 'Self-test running…'; }
-  else if (c.status === 'none') { head.textContent = 'Waiting for the first self-test…'; body.textContent = 'Runs automatically shortly after start, then every 150 s.'; ct.textContent = 'Not calibrated yet'; }
+  else if (c.status === 'none') { head.textContent = 'Waiting for the first self-test…'; body.textContent = 'Runs automatically shortly after start, then every 150 s.'; ct.textContent = 'Self-test pending'; }
   else if (c.status === 'valid') { head.textContent = `Passed. We found the ${L.d_ms.toFixed(0)} ms where we hid it.`; body.textContent = L.reason + '.' + tail;
-    cb.classList.add('good'); cb.style.opacity = 1 - 0.45 * Math.min(1, c.age_s / c.ttl_s); ct.textContent = `Calibrated ±${L.tol_ms} ms · valid ${mins}`; }
+    cb.classList.add('good'); cb.style.opacity = 1 - 0.45 * Math.min(1, c.age_s / c.ttl_s); ct.textContent = `Self-test ±${L.tol_ms} ms · valid ${mins}`; }
   else if (c.status === 'expired') { head.textContent = 'Calibration expired.'; body.textContent = `The last passing self-test is ${Math.round(c.age_s)} s old. Latency figures are unverified until the next one.`; cb.classList.add('warning'); ct.textContent = 'Calibration expired · unverified'; }
   else if (c.status === 'inconclusive') { head.textContent = 'Inconclusive: not enough samples.'; body.textContent = (L && L.reason) || ''; cb.classList.add('warning'); ct.textContent = 'Calibration inconclusive'; }
   else { head.textContent = L && L.found === null && /not sure/.test(L.reason || '') ? 'Failed. We were not sure where the delay was.' : 'Failed. We did not find the delay we hid.'; body.textContent = (L ? L.reason + (L.sham_ok ? '' : ' | sham: ' + L.sham_reason) + '.' : '') + ' Treat latency figures as unverified.'; cb.classList.add('critical'); ct.textContent = 'Calibration failed'; }
@@ -339,7 +339,7 @@ function opsSample(f) {          // one decision per frame-clock second: categor
   const lg = f.lag && f.lag.total != null ? OM.ema.lag.push(f.lag.total) : null, backlog = lg == null ? null : hold('backlog', 'backlog', lg);
   if (speed) sevs.push(speed.sev); if (backlog) sevs.push(backlog.sev);
   const inc = f.incidents || [], openReal = inc.some(i => i.end_ms == null && !i.induced), induced = !!f.induced || inc.some(i => i.end_ms == null && i.induced);
-  const c = f.calibration || {}, trust = c.status === 'valid' ? { sev: 'good', word: 'Verified', note: 'Pulse checked its own timing and found a known delay.' }
+  const c = f.calibration || {}, trust = c.status === 'valid' ? { sev: 'good', word: 'Verified', note: 'Pulse found a known delay it hid in its own timing stages. Exchange clocks and the network are not covered.' }
     : c.status === 'running' ? { sev: 'warning', word: 'Checking', note: 'A self-test is running.' }
     : { sev: 'warning', word: 'Unverified', note: c.status === 'failed' ? 'The last self-test failed.' : 'The timing has not been verified recently.' };
   OM.view = { venues, speed, speedMs: sp, backlog, lagN: lg, trust, head: OPS.headline(sevs, openReal, induced), inc }; OM.E = buildE(f);
