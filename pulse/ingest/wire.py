@@ -1,7 +1,7 @@
 # COPIED from fathom/processor/wire.py @ fathom d2e63e4 (read-only upstream, S1: no cross-repo imports).
 # Changes: import of marketdata_pb2 rewritten to the local copy; peek_index() added so callers can
 # skip non-trade messages before ParseFromString. Decode logic is otherwise byte-for-byte upstream.
-"""Confluent wire-format reader — routes RecordNameStrategy-multiplexed topics.
+"""Confluent wire-format reader: routes RecordNameStrategy-multiplexed topics.
 
 Phase 1 publishes multiple proto types per topic (decision A, MSG_032/033):
 the value bytes are framed as
@@ -11,7 +11,7 @@ the value bytes are framed as
 where the msg-index array is a zigzag-varint count followed by zigzag-varint
 indexes into the .proto's top-level message declarations (special case: the
 array [0] is encoded as the single byte 0x00). Because all our subjects carry
-the SAME schema text, the schema id cannot route — only the message index can.
+the SAME schema text, the schema id cannot route, only the message index can.
 So we parse the header ourselves and dispatch on the index. No per-message SR
 lookup, no oneof envelope.
 
@@ -78,7 +78,7 @@ def decode(value: bytes):
     """
     if len(value) < 6 or value[0] != _MAGIC:
         raise WireError(f"bad magic/short frame (len={len(value)})")
-    # schema id (unused for routing — identical schema across subjects)
+    # schema id (unused for routing, identical schema across subjects)
     (_schema_id,) = struct.unpack_from(">I", value, 1)
 
     count, pos = _read_zigzag_varint(value, 5)
@@ -86,7 +86,7 @@ def decode(value: bytes):
         index = 0          # special case: array [0] encoded as single 0 byte
     else:
         index, pos = _read_zigzag_varint(value, pos)
-        for _ in range(count - 1):     # nested paths — none in our schema
+        for _ in range(count - 1):     # nested paths, none in our schema
             _, pos = _read_zigzag_varint(value, pos)
 
     cls = _INDEX_TO_TYPE.get(index)

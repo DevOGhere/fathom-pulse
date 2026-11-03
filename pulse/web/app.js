@@ -156,7 +156,7 @@ function renderStrip(f) {
     const mids = s.bins ? s.bins.mid : [], chg = mids.length > 1 && mids[0] ? (mids[mids.length - 1] / mids.find(v => v != null) - 1) * 100 : null;
     const b = el('button', 'pill'); b.setAttribute('aria-pressed', k === S.sel); b.dataset.k = k;
     const last = s.window_1s ? s.window_1s.mid : null;
-    b.append(el('b', '', k), el('span', 'num', last != null ? last.toFixed(2) : '—'));
+    b.append(el('b', '', k), el('span', 'num', last != null ? last.toFixed(2) : '-'));
     const sp = document.createElement('span'); sp.innerHTML = spark(mids); b.append(sp);
     b.append(el('span', 'chg num', chg == null ? 'no history yet' : `${chg >= 0 ? '▲' : '▼'} ${Math.abs(chg).toFixed(2)}% · ${mids.length} s`));
     strip.append(b);
@@ -172,7 +172,7 @@ function renderChrome(f, s, w) {
   else if (s && s.last_msg_age_ms != null) { const [, cls, word, glyph] = ageClass(s.last_msg_age_ms); $('ageBadge').className = 'badge ' + cls; $('ageText').textContent = `${S.sel} · ${word} · last update ${fmtAge(s.last_msg_age_ms)} ago`; setChips(cls, glyph, `${fmtAge(s.last_msg_age_ms)} · ${word}`); }
   else { $('ageBadge').className = 'badge'; $('ageText').textContent = 'no data yet'; setChips('', '○', 'no data'); }
   $('tLag').textContent = f.lag.total == null ? 'n/a' : f.lag.total; $('tLag').title = f.lag.ok ? '' : (f.lag.error || '');
-  $('tRate').textContent = w ? w.n : (s ? 0 : '—'); $('tDrop').textContent = f.client.drops;
+  $('tRate').textContent = w ? w.n : (s ? 0 : '-'); $('tDrop').textContent = f.client.drops;
   if (w) { $('heroMid').textContent = w.mid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     $('heroSub').textContent = `mid · ${QUOTE[S.sel.split('/')[0]] || '?'} · ${S.sel}`;
     $('spreadNote').textContent = `spread ${w.spread_abs.toFixed(2)} · ` + (w.effective_spread == null ? 'effective spread blank: no recent trade' : `effective spread ${w.effective_spread.toFixed(2)}`); }
@@ -212,30 +212,30 @@ const tipEl = $('tip'), hitAt = e => { const r = $('cAnat').getBoundingClientRec
 $('cAnat').addEventListener('pointermove', e => { const h = hitAt(e), s = sel(); if (!h || !s) { tipEl.style.display = 'none'; return; } const v = binStages(s, h.i); if (!v) { tipEl.style.display = 'none'; return; }
   const cols = STAGE_COL(); tipEl.textContent = ''; const hd = document.createElement('div'); hd.style.cssText = 'color:var(--ink-muted);margin-bottom:4px'; hd.textContent = `${Math.round(Date.now() / 1000 - s.bins.start_s[h.i])} s ago · P${S.pct}${s.bins.induced[h.i] ? ' · INDUCED (self-test)' : ''}`; tipEl.append(hd);
   v.forEach((val, k) => { const r = document.createElement('div'); r.className = 'row'; const l = document.createElement('span'); const kk = document.createElement('i'); kk.className = 'k'; kk.style.background = cols[k]; l.append(kk, document.createTextNode(STAGE_NAME[k]));
-    const b = document.createElement('b'); b.className = 'num'; b.textContent = val == null ? (k === 3 ? 'n/a' : '—') : val.toFixed(1) + ' ms'; r.append(l, b); tipEl.append(r); });
+    const b = document.createElement('b'); b.className = 'num'; b.textContent = val == null ? (k === 3 ? 'n/a' : '-') : val.toFixed(1) + ' ms'; r.append(l, b); tipEl.append(r); });
   tipEl.style.display = 'block'; tipEl.style.left = Math.min(e.clientX + 14, innerWidth - 300) + 'px'; tipEl.style.top = (e.clientY + 14) + 'px'; });
 $('cAnat').addEventListener('pointerleave', () => { tipEl.style.display = 'none'; });
 $('cAnat').addEventListener('click', e => { const h = hitAt(e), s = sel(), pin = $('pin'); if (!h || !s) { resumeLive(); S.pinned = null; S.dirty = true; return; }
   S.pinned = s.bins.start_s[h.i]; const st = s.bins.stages, p = 'p' + S.pct; const tot = st['s1_' + p][h.i] + st['s2_' + p][h.i] + st['s3_' + p][h.i];
-  pin.textContent = `Pinned. ${S.pct === 99 ? 'P99' : 'P50'} server total ${tot.toFixed(1)} ms (stages 1-3, before the wait for the next 10 Hz frame, median ${st['tw_p50'][h.i] == null ? '—' : st['tw_p50'][h.i].toFixed(0)} ms). ${attribution(s, h.i)}${s.bins.induced[h.i] ? ' This second was part of a self-test, so the extra time is deliberate.' : ''}`; S.dirty = true; openInspector(h.i); });
+  pin.textContent = `Pinned. ${S.pct === 99 ? 'P99' : 'P50'} server total ${tot.toFixed(1)} ms (stages 1-3, before the wait for the next 10 Hz frame, median ${st['tw_p50'][h.i] == null ? '-' : st['tw_p50'][h.i].toFixed(0)} ms). ${attribution(s, h.i)}${s.bins.induced[h.i] ? ' This second was part of a self-test, so the extra time is deliberate.' : ''}`; S.dirty = true; openInspector(h.i); });
 // ---------- Inspector: click a bar -> charts pause, every record of that second opens (live data keeps arriving behind the pause) ----------
 function resumeLive() { if (!S.paused) return; S.paused = false; S.pinned = null; $('insp').hidden = true; $('pin').textContent = 'Click a bar to pin one second: the charts pause and every record in it opens below.';
   if (S.latest) { S.tail = {}; S.lagHist = []; S.lastSeq = 0; ingest(S.latest); } S.latest = null; S.held = 0; S.dirty = true; }
 const kv = (box, k, v) => { const d = el('div', 'kv'); d.append(el('span', 'k', k), el('span', 'v num', v)); box.append(d); };
-const f1 = v => (v == null ? '—' : v.toFixed(v < 1 ? 3 : 1)), hms = ms => new Date(ms).toTimeString().slice(0, 8) + '.' + String(Math.floor(ms % 1000)).padStart(3, '0');
+const f1 = v => (v == null ? '-' : v.toFixed(v < 1 ? 3 : 1)), hms = ms => new Date(ms).toTimeString().slice(0, 8) + '.' + String(Math.floor(ms % 1000)).padStart(3, '0');
 async function openInspector(i) {
   const s = sel(), box = $('insp'), sec = s.bins.start_s[i], b = s.bins, st = b.stages; S.paused = true; S.pinnedI = i; S.dirty = true; box.hidden = false; box.textContent = '';
   const head = el('div', 'ih'); head.append(el('b', '', `Paused · ${S.sel} · ${hms(sec * 1000).slice(0, 8)}`), el('span', 'muted', 'Charts are frozen; live data keeps arriving in the background.'));
   const btn = el('button', 'btn', 'Resume live'); btn.addEventListener('click', resumeLive); head.append(btn); box.append(head);
-  const meta = el('div', 'kvs'); kv(meta, 'Updates', b.n_derived[i]); kv(meta, 'Trades', b.trade_count_1s[i]); kv(meta, 'Mid', b.mid[i] == null ? '—' : b.mid[i].toFixed(2)); kv(meta, 'Microprice', b.microprice[i] == null ? '—' : b.microprice[i].toFixed(2));
-  kv(meta, 'Imbalance', b.obi_top1[i] == null ? '—' : b.obi_top1[i].toFixed(2)); kv(meta, 'Self-test second', b.induced[i] ? 'yes (delay is deliberate)' : 'no');
+  const meta = el('div', 'kvs'); kv(meta, 'Updates', b.n_derived[i]); kv(meta, 'Trades', b.trade_count_1s[i]); kv(meta, 'Mid', b.mid[i] == null ? '-' : b.mid[i].toFixed(2)); kv(meta, 'Microprice', b.microprice[i] == null ? '-' : b.microprice[i].toFixed(2));
+  kv(meta, 'Imbalance', b.obi_top1[i] == null ? '-' : b.obi_top1[i].toFixed(2)); kv(meta, 'Self-test second', b.induced[i] ? 'yes (delay is deliberate)' : 'no');
   for (const [k, n] of [['s1', '1 Fathom'], ['s2', '2 Hand-off'], ['s3', '3 Pulse'], ['tw', 'Refresh wait'], ['tot', 'Total 1-3']]) kv(meta, `${n} P50 / P99`, `${f1(st[k + '_p50'][i])} / ${f1(st[k + '_p99'][i])} ms`);
   box.append(meta); const tb = el('div', 'irec', 'Loading this second’s records…'); box.append(tb);
   try {
     const [v, sy] = S.sel.split('/'), r = await fetch(`/tick?venue=${encodeURIComponent(v)}&symbol=${encodeURIComponent(sy)}&sec=${sec}`); if (!r.ok) throw new Error((await r.json()).detail || r.status);
     const d = await r.json(); tb.textContent = ''; if (!d.records.length) { tb.textContent = 'No records in this second.'; return; }
     const t = document.createElement('table'); t.className = 'rec'; const hr = t.insertRow(); ['Time (Pulse)', 'Kafka ts', '1 recv→derived', '2 derived→Pulse', '3 →ready', 'Refresh wait', 'Mid', 'Microprice', 'Imbal.', 'Spread eff.', 'Test', 'Kafka partition:offset', 'Bytes', 'Schema', 'recv_ts_ns (producer)', 'derived_at_ns (processor)'].forEach(x => hr.append(Object.assign(document.createElement('th'), { textContent: x })));
-    for (const x of d.records) { const row = t.insertRow(); [hms(x.t_ms), hms(x.kafka_ms), f1(x.s1), f1(x.s2), f1(x.s3), f1(x.tw), x.mid.toFixed(2), x.microprice.toFixed(2), x.obi1.toFixed(2), x.eff_spread == null ? '—' : x.eff_spread.toFixed(2), x.induced ? 'yes' : '', `${x.partition}:${x.offset}`, x.size, x.schema_id == null ? '—' : '#' + x.schema_id, x.recv_ns, x.derived_ns].forEach(c => row.insertCell().textContent = c); }
+    for (const x of d.records) { const row = t.insertRow(); [hms(x.t_ms), hms(x.kafka_ms), f1(x.s1), f1(x.s2), f1(x.s3), f1(x.tw), x.mid.toFixed(2), x.microprice.toFixed(2), x.obi1.toFixed(2), x.eff_spread == null ? '-' : x.eff_spread.toFixed(2), x.induced ? 'yes' : '', `${x.partition}:${x.offset}`, x.size, x.schema_id == null ? '-' : '#' + x.schema_id, x.recv_ns, x.derived_ns].forEach(c => row.insertCell().textContent = c); }
     tb.append(el('div', 'muted', `Topic ${d.topic}. ${d.records.length} records. Stage columns in ms (differences of host monotonic stamps). ${d.note}.`), t);
   } catch (e) { tb.textContent = S.replay ? 'Per-record rows need the live server; this is a recording. The second’s own figures are above.' : `Per-record rows unavailable: ${e.message}. The second’s own figures are above.`; }
 }
@@ -257,7 +257,7 @@ function renderCal(f) {
   $('calAgo').textContent = c.age_s == null ? '' : `last run ${Math.round(c.age_s)} s ago`; $('btnTest').disabled = c.status === 'running' || !!S.replay;
   $('induced').hidden = !f.induced;
   const sl = f.slo, t = $('tSlo'), unv = c.status !== 'valid';
-  t.textContent = !sl || sl.met == null ? '—' : unv ? 'Unverified' : sl.met ? 'Met' : 'Breached'; t.style.color = unv && sl && sl.met != null ? 'var(--status-warning)' : sl && sl.met === false ? 'var(--status-critical)' : '';
+  t.textContent = !sl || sl.met == null ? '-' : unv ? 'Unverified' : sl.met ? 'Met' : 'Breached'; t.style.color = unv && sl && sl.met != null ? 'var(--status-warning)' : sl && sl.met === false ? 'var(--status-critical)' : '';
   $('tSloS').textContent = sl && sl.p99_ms != null ? `pipeline p99 ${sl.p99_ms} ms vs ${sl.target_ms} · + ${sl.tick_wait_p50_ms} ms median wait for the next 10 Hz frame (by design) · ${sl.n} records${unv ? ' · calibration not valid' : ''}` : 'needs data';
 }
 $('btnInduce').addEventListener('click', () => { $('btnInduce').disabled = true; fetch('/incident/induce?seconds=8', { method: 'POST' }).catch(() => {}); setTimeout(() => { $('btnInduce').disabled = !!S.replay; }, 9000); });
@@ -278,7 +278,7 @@ function renderIncidents(f) {
 function renderDq(f) {
   const t = $('dq'); t.textContent = ''; const h = t.insertRow(); ['Venue', 'Empty seconds', 'Spread blank', 'Stalled for'].forEach(x => h.append(Object.assign(document.createElement('th'), { textContent: x })));
   for (const [k, s] of Object.entries(f.series)) { const d = s.dq; if (!d) continue; const r = t.insertRow(); r.insertCell().textContent = k; r.insertCell().textContent = `${d.empty_bins_60} of ${d.bins_60}`;
-    r.insertCell().textContent = d.sentinel_rate_60 == null ? '—' : Math.round(d.sentinel_rate_60 * 100) + '% (no recent trade)'; r.insertCell().textContent = d.stall_s == null ? '—' : d.stall_s.toFixed(1) + ' s'; }
+    r.insertCell().textContent = d.sentinel_rate_60 == null ? '-' : Math.round(d.sentinel_rate_60 * 100) + '% (no recent trade)'; r.insertCell().textContent = d.stall_s == null ? '-' : d.stall_s.toFixed(1) + ' s'; }
 }
 
 function renderTob(s) {
@@ -296,7 +296,7 @@ function renderFeeds(f) {
   const t = $('feeds'); t.textContent = ''; const h = t.insertRow(); ['Venue', 'Updates/s', 'Last msg', 'State'].forEach(x => h.append(Object.assign(document.createElement('th'), { textContent: x })));
   for (const [k, s] of Object.entries(f.series)) { const w = s.window_1s, r = t.insertRow(); const lm = s.last_msg_age_ms, cls = w ? ageClass(w.pulse_consume_age_ms)[1] : lm != null ? ageClass(lm)[1] : 'critical';
     const c0 = r.insertCell(); const d = el('i', 'sdot ' + (cls === 'good' ? '' : cls === 'warning' ? 'warning' : 'critical')); c0.append(d, document.createTextNode(k));
-    r.insertCell().textContent = w ? w.n : (lm != null ? 0 : '—'); r.insertCell().textContent = w ? `${w.pulse_consume_age_ms.toFixed(0)} ms ago` : lm != null ? `${fmtAge(lm)} ago` : 'no data'; r.insertCell().textContent = w ? ageClass(w.pulse_consume_age_ms)[2] : lm != null ? ageClass(lm)[2] : 'no data'; }
+    r.insertCell().textContent = w ? w.n : (lm != null ? 0 : '-'); r.insertCell().textContent = w ? `${w.pulse_consume_age_ms.toFixed(0)} ms ago` : lm != null ? `${fmtAge(lm)} ago` : 'no data'; r.insertCell().textContent = w ? ageClass(w.pulse_consume_age_ms)[2] : lm != null ? ageClass(lm)[2] : 'no data'; }
   $('sbConn').innerHTML = ''; for (const [k, s] of Object.entries(f.series)) { const w = s.window_1s; $('sbConn').append(el('span', '', `${k} ${w ? w.n : 0}/s   `)); }
 }
 const ICON = { info: 'ℹ', good: '✓', warning: '▲', serious: '■', critical: '✕' };
@@ -446,7 +446,7 @@ function initTips() { TIP.el = $('otip'); const ops = $('ops');
 function chip(b, key, tip) { const c = el2('span', 'chip2'); c.dataset.sev = b.sev; c.textContent = `${ICON_SEV[b.sev]} ${b.word}`; return tipped(c, key, tip); }
 function tile(label, name, b, big, sub, key, tip) {          // KPI: bold figure, category word, gauge with the ranges VISIBLE under it
   const m = el2('div', 'm'); m.dataset.sev = b ? b.sev : 'good'; m.append(el2('div', 'lbl', label));
-  const row = el2('div', 'bigrow'); row.append(el2('span', 'bigv', big || '—'), el2('b', 'word', b ? `${ICON_SEV[b.sev]} ${b.word}` : '')); m.append(row);
+  const row = el2('div', 'bigrow'); row.append(el2('span', 'bigv', big || '-'), el2('b', 'word', b ? `${ICON_SEV[b.sev]} ${b.word}` : '')); m.append(row);
   if (name && b) { const bands = OPS.BANDS[name], seg = el2('div', 'seg'), lab = el2('div', 'bl'); seg.style.setProperty('--n', bands.length); lab.style.setProperty('--n', bands.length);
     bands.forEach((x, i) => { seg.append(el2('i', i <= b.i ? 'on' : '')); const t = el2('span', i === b.i ? 'cur' : '', x[2]); lab.append(t); }); m.append(seg, lab); }
   m.append(el2('span', 'dt', (sub || '') + (b && b.settling ? ' · label settling' : ''))); return b && tip ? tipped(m, key, tip) : m; }
@@ -466,7 +466,7 @@ function renderOps(f) {
     worst ? tile('Data age', 'fresh', worst[1].fresh, OPS.fmtMs(worst[1].age), `${OPS.VN(worst[0])}, the older of the two feeds`, 'fresh', X.fresh(worst[0], worst[1].fresh, worst[1].age)) : tile('Data age', null, null, '', ''));
   const TR = $('opsTrust'); TR.textContent = ''; TR.append(tile('Trust', null, v.trust, c.status === 'valid' && c.last ? `±${c.last.tol_ms} ms` : '', v.trust.note, 'trust', X.trust(c.status || 'none', c.age_s || 0, c.ttl_s || 180, c.last ? c.last.tol_ms : '?')));
   for (const [k, x] of Object.entries(v.venues)) { const t = k.startsWith('binance') ? 'b' : 'c'; if (!$('pn' + t)) continue; $('pn' + t).textContent = `${OPS.VN(k)} · ${k.split('/')[1].toUpperCase()}`;
-    const pv = $('pv' + t); pv.textContent = x.px != null ? x.px.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'; if (x.chg != null) { const s = el2('small', '', `${x.chg >= 0 ? '▲' : '▼'} ${Math.abs(x.chg).toFixed(2)}%`); pv.append(s); } tipped(pv, 'px:' + k, X.price(k));
+    const pv = $('pv' + t); pv.textContent = x.px != null ? x.px.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'; if (x.chg != null) { const s = el2('small', '', `${x.chg >= 0 ? '▲' : '▼'} ${Math.abs(x.chg).toFixed(2)}%`); pv.append(s); } tipped(pv, 'px:' + k, X.price(k));
     const ch = $('ch' + t); ch.textContent = ''; ch.append(chip(x.fresh, 'f:' + k, X.fresh(k, x.fresh, x.age))); if (x.rate) ch.append(chip({ sev: x.rate.sev, word: 'Updates ' + x.rate.word.toLowerCase() }, 'r:' + k, X.rate(k, x.rate, x.ratio))); }
   document.querySelectorAll('h3[data-chart]').forEach(h => tipped(h, 'chart:' + h.dataset.chart, X.chart[h.dataset.chart]));
   const sh = $('opsShare'); sh.textContent = ''; if (E && E.share.s1 != null) { const S2 = E.share, segs = [['s1', 'Fathom', 'var(--stage-recv)'], ['s2', 'Hand-off to Pulse', 'var(--stage-derive)'], ['s3', 'Pulse', 'var(--stage-pulse)'], ['tw', 'Wait for next refresh', 'rgba(255,255,255,.22)']];
@@ -510,7 +510,7 @@ let tick0 = performance.now();
 function loop() { S.rafTicks++; if (S.dirty) { S.dirty = false; render(); } requestAnimationFrame(loop); }
 setInterval(() => { $('sbClock').textContent = new Date().toTimeString().slice(0, 8) + ' local';
   const dt = (performance.now() - tick0) / 1000, fps = S.rafTicks / dt, p99 = pct(S.costs, 99);
-  $('sbMeter').textContent = `render p99 ${p99 == null ? '—' : p99.toFixed(1)} ms · rAF ${fps.toFixed(0)} fps`;
+  $('sbMeter').textContent = `render p99 ${p99 == null ? '-' : p99.toFixed(1)} ms · rAF ${fps.toFixed(0)} fps`;
   fetch('/debug/stats', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ raf_fps: +fps.toFixed(1), draws: S.draws, msgs: S.msgs, render_ms_p50: pct(S.costs, 50), render_ms_p99: p99,
     render_ms_max: S.costs.length ? Math.max(...S.costs) : null, seq_missed: S.seqGaps, dpr: window.devicePixelRatio, w: innerWidth, h: innerHeight, connected: S.connected, at: Date.now() }) }).catch(() => {});
   if (dt > 10) { S.rafTicks = 0; tick0 = performance.now(); } }, 1000);

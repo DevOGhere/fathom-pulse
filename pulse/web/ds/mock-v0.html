@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FathomPulse — UI mock v0 (synthetic data)</title>
+<title>FathomPulse: UI mock v0 (synthetic data)</title>
 <link rel="stylesheet" href="tokens.css">
 <style>
   * { box-sizing: border-box; }
@@ -152,14 +152,14 @@
 </head>
 <body>
 <div class="ocean" aria-hidden="true"><i class="b1"></i><i class="b2"></i><i class="b3"></i></div>
-<div class="mockbar">MOCK — synthetic generator, not connected to Fathom. Layout, interactions and copy are being designed here; every number on this page is made up.</div>
+<div class="mockbar">MOCK: synthetic generator, not connected to Fathom. Layout, interactions and copy are being designed here; every number on this page is made up.</div>
 
 <div class="top">
   <span class="brand">FathomPulse</span>
   <div class="tabs" id="tabs" role="group" aria-label="Symbol"></div>
   <span class="spacer"></span>
   <span class="badge" id="modeBadge"><span class="dot"></span><span>Simulated · 1 s of mock = 1 s</span></span>
-  <span class="badge" id="ageBadge"><span class="dot"></span><span class="num" id="ageText">—</span></span>
+  <span class="badge" id="ageBadge"><span class="dot"></span><span class="num" id="ageText">-</span></span>
   <span class="badge" id="calBadge"><span class="dot"></span><span id="calText">Calibrating…</span></span>
 </div>
 
@@ -185,10 +185,10 @@
     <div class="card">
       <h3>Pipeline vitals</h3>
       <div class="tiles">
-        <div class="tile"><div class="l">Consumer lag</div><div class="v num" id="tLag">—</div><div class="s">messages behind</div></div>
-        <div class="tile"><div class="l">Derived rate</div><div class="v num" id="tRate">—</div><div class="s">msg/s</div></div>
+        <div class="tile"><div class="l">Consumer lag</div><div class="v num" id="tLag">-</div><div class="s">messages behind</div></div>
+        <div class="tile"><div class="l">Derived rate</div><div class="v num" id="tRate">-</div><div class="s">msg/s</div></div>
         <div class="tile"><div class="l">Frames dropped</div><div class="v num" id="tDrop">0</div><div class="s">this client, lost smoothness not state</div></div>
-        <div class="tile"><div class="l">Latency SLO</div><div class="v num" id="tSlo">—</div><div class="s">p99 &lt; 100 ms, last 60 s</div></div>
+        <div class="tile"><div class="l">Latency SLO</div><div class="v num" id="tSlo">-</div><div class="s">p99 &lt; 100 ms, last 60 s</div></div>
       </div>
     </div>
 
@@ -214,7 +214,7 @@
     <div class="card">
       <h3>Mid &amp; microprice <span class="sub">trailing 60 s · 10 Hz</span>
         <button class="chip" data-chip="market" title="Age of the newest tick on this panel. Click to see where the time went."></button></h3>
-      <div class="hero"><span class="v" id="heroMid">—</span><span class="l" id="heroSub">mid · USD</span></div>
+      <div class="hero"><span class="v" id="heroMid">-</span><span class="l" id="heroSub">mid · USD</span></div>
       <canvas id="cMid" height="120"></canvas>
       <div class="legend">
         <span><i style="background:var(--ink-secondary)"></i>mid</span>
@@ -465,7 +465,7 @@ function updateChrome() {
   document.getElementById('tRate').textContent = Math.round(S.rate[last]);
   document.getElementById('tDrop').textContent = S.drops;
   const p99 = S.sloHist.length ? pctile(S.sloHist, 99) : 0, tSlo = document.getElementById('tSlo');
-  tSlo.textContent = S.sloHist.length ? (p99 < 100 ? 'Met' : 'Breached') : '—'; tSlo.style.color = p99 < 100 ? 'var(--ink-primary)' : 'var(--status-critical)';
+  tSlo.textContent = S.sloHist.length ? (p99 < 100 ? 'Met' : 'Breached') : '-'; tSlo.style.color = p99 < 100 ? 'var(--ink-primary)' : 'var(--status-critical)';
   const cb = document.getElementById('calBadge'), ct = document.getElementById('calText');
   if (S.test) { cb.className = 'badge warning'; cb.style.opacity = 1; ct.textContent = 'Self-test running…'; }
   else if (S.lastTest) { const s = Math.round((Date.now() - S.lastTest.at) / 1000), left = CAL_TTL - s, expired = left <= 0;
@@ -577,7 +577,7 @@ cAnat.addEventListener('click', e => {
   const order = [0, 1, 2, 3].sort((i, j) => ex[j] - ex[i]), top = order[0], sec = order[1];
   let verdict;
   if (exT < 2) verdict = 'Nothing unusual: every stage is within its typical range.';
-  else if ((ex[top] - ex[sec]) / exT < 0.25) verdict = `Not sure. Stage ${top + 1} (${Math.round(ex[top] / exT * 100)}%) or stage ${sec + 1} (${Math.round(ex[sec] / exT * 100)}%) — this data can't separate them.`;
+  else if ((ex[top] - ex[sec]) / exT < 0.25) verdict = `Not sure. Stage ${top + 1} (${Math.round(ex[top] / exT * 100)}%) or stage ${sec + 1} (${Math.round(ex[sec] / exT * 100)}%), this data can't separate them.`;
   else verdict = `${Math.round(ex[top] / exT * 100)}% of the extra time is in stage ${top + 1} (${STAGE_NAMES[top]}).`;
   document.getElementById('pin').innerHTML = `<b>Pinned.</b> P99 total ${tot.toFixed(1)} ms. ${verdict}${b.burst ? ' A burst of quote updates was in progress.' : ''}${b.test ? ' This second was part of a self-test, so the extra time is deliberate.' : ''}`;
 });

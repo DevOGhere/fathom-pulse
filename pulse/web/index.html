@@ -22,7 +22,7 @@
   <span class="badge" id="ageBadge"><span class="dot"></span><span class="num" id="ageText">no data yet</span></span>
   <span class="badge" id="calBadge"><span class="dot"></span><span>Self-test pending</span></span>
 </div>
-<div class="banner" id="induced" hidden>SELF-TEST IN PROGRESS — real data in this window is delayed on purpose (induced). Ignore latency figures until it ends.</div>
+<div class="banner" id="induced" hidden>SELF-TEST IN PROGRESS: real data in this window is delayed on purpose (induced). Ignore latency figures until it ends.</div>
 <div class="strip" id="strip" role="group" aria-label="Venues"></div>
 
 <main class="ops" id="ops" hidden aria-live="off">
@@ -78,10 +78,10 @@
       <div class="card">
         <h3>Pipeline vitals</h3>
         <div class="tiles">
-          <div class="tile"><div class="l">Processor lag</div><div class="v num" id="tLag">—</div><div class="s">msgs behind (fathom-processor)</div></div>
-          <div class="tile"><div class="l">Derived rate</div><div class="v num" id="tRate">—</div><div class="s">updates in last 1 s</div></div>
+          <div class="tile"><div class="l">Processor lag</div><div class="v num" id="tLag">-</div><div class="s">msgs behind (fathom-processor)</div></div>
+          <div class="tile"><div class="l">Derived rate</div><div class="v num" id="tRate">-</div><div class="s">updates in last 1 s</div></div>
           <div class="tile"><div class="l">Frames dropped</div><div class="v num" id="tDrop">0</div><div class="s">this client; smoothness lost, not state</div></div>
-          <div class="tile"><div class="l">Latency SLO</div><div class="v num" id="tSlo">—</div><div class="s" id="tSloS">p99 recv → ready for a frame &lt; 100 ms, 60 s</div></div>
+          <div class="tile"><div class="l">Latency SLO</div><div class="v num" id="tSlo">-</div><div class="s" id="tSloS">p99 recv → ready for a frame &lt; 100 ms, 60 s</div></div>
         </div>
       </div>
       <div class="card">
@@ -97,7 +97,7 @@
     <div class="col pool market">
       <div class="card">
         <h3>Mid &amp; microprice <span class="sub">trailing 60 s · 10 Hz</span><button class="chip" data-chip></button></h3>
-        <div class="hero"><span class="v" id="heroMid">—</span><span class="l" id="heroSub"></span></div>
+        <div class="hero"><span class="v" id="heroMid">-</span><span class="l" id="heroSub"></span></div>
         <canvas id="cMid" data-h="120"></canvas>
         <div class="legend">
           <span><i style="background:var(--ink-secondary)"></i>mid</span>

@@ -1,4 +1,4 @@
-"""Calibration verdict maths (pure, no I/O) — so the test of the test can itself be tested.
+"""Calibration verdict maths (pure, no I/O), so the test of the test can itself be tested.
 
 A self-test compares per-record stage durations (ms) in a BASELINE window with those in a TEST window in which a delay
 was injected at a real Pulse stamp site. Per stage: delta = mean(test) - mean(base), se = Welch standard error. The

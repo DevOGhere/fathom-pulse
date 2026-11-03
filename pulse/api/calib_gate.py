@@ -2,7 +2,7 @@
 
 Fires N real self-tests (alternating stage 2/3) against a running server and prints each outcome. PASS needs N consecutive
 passes, every sham reporting "nothing found", and a record of the size error against its noise-derived tolerance.
-(The two negative controls — wrong expected stage must fail, sham with a real injection must be a false alarm — are unit
+(The two negative controls: wrong expected stage must fail, sham with a real injection must be a false alarm; are unit
 tests in tests/test_calib_math.py.)
 """
 import argparse, json, sys, urllib.request

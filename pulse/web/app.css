@@ -1,4 +1,4 @@
-/* FathomPulse app styles — extracted from the design-reference mock (ds/mock-v0.html), tokens in ds/tokens.css */
+/* FathomPulse app styles, extracted from the design-reference mock (ds/mock-v0.html), tokens in ds/tokens.css */
 
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--page); color: var(--ink-primary); font-family: var(--font-ui); font-size: 13px; }

@@ -1,7 +1,7 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><title>FathomPulse — frame counter (Day 2)</title>
+<!doctype html><html lang="en"><meta charset="utf-8"><title>FathomPulse: frame counter (Day 2)</title>
 <style>body{background:#0d0d0d;color:#ddd;font:14px system-ui;padding:24px}b{color:#fff}pre{background:#1a1a19;padding:12px;border-radius:8px}</style>
 <h2>FathomPulse · bare counter page</h2>
-<p>frame <b id="seq">—</b> · measured <b id="hz">—</b> Hz · pulse age <b id="age">—</b> ms · processor lag <b id="lag">—</b> msgs · this client dropped <b id="drops">0</b></p>
+<p>frame <b id="seq">-</b> · measured <b id="hz">-</b> Hz · pulse age <b id="age">-</b> ms · processor lag <b id="lag">-</b> msgs · this client dropped <b id="drops">0</b></p>
 <pre id="out">connecting…</pre>
 <script>
 const $=id=>document.getElementById(id); let n=0,t0=performance.now();
@@ -10,5 +10,5 @@ ws.onmessage=e=>{const f=JSON.parse(e.data); n++;
  $('seq').textContent=f.seq; $('age').textContent=f.pulse_age_ms; $('lag').textContent=f.lag.total; $('drops').textContent=f.client.drops;
  const dt=(performance.now()-t0)/1000; if(dt>1){$('hz').textContent=(n/dt).toFixed(1); }
  $('out').textContent=JSON.stringify(Object.fromEntries(Object.entries(f.series).map(([k,v])=>[k,v.window_1s])),null,1);};
-ws.onclose=()=>$('out').textContent='disconnected — numbers above are frozen, not current';
+ws.onclose=()=>$('out').textContent='disconnected: numbers above are frozen, not current';
 </script></html>
