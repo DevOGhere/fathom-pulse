@@ -18,6 +18,7 @@ SFX = {   # name -> (prompt, seconds)
 }
 EVENTS = [   # (scene, seconds into the scene, sfx, gain)
     ("journey", 0.0, "whoosh", 0.6), ("selftest", 0.0, "whoosh", 0.6), ("detector", 0.0, "whoosh", 0.6),
+    ("reel", 1.5, "alert", 0.7), ("reel", 9.5, "whoosh", 0.6), ("reel", 14.4, "click", 1.0), ("reel", 19.6, "alert", 0.7), ("reel", 27.0, "click", 1.0), ("reel", 38.3, "chime", 0.7),
     ("anatomy", 5.0, "click", 1.0),
     ("calib", 4.0, "click", 1.0), ("calib", 14.0, "chime", 0.9),
     ("induce", 2.0, "click", 1.0), ("induce", 4.6, "alert", 0.8), ("induce", 10.4, "chime", 0.7),
@@ -33,6 +34,7 @@ def dur(p):
 def main():
     a = sys.argv[1:]
     video, scenes, out = Path(a[0]), Path(a[1]), Path(a[2])
+    if "--order" in a: ORDER[:] = a[a.index("--order") + 1].split(",")
     mvol = float(a[a.index("--music-volume") + 1]) if "--music-volume" in a else 0.16
     svol = float(a[a.index("--sfx-volume") + 1]) if "--sfx-volume" in a else 0.35
     use_music = "--no-music" not in a
@@ -68,14 +70,14 @@ def main():
         mix.append("[md]"); idx += 1
     else:
         filt[0] = "[0:a]anull[vo]"
-    for j, (scene, off, name, gain) in enumerate(EVENTS):
+    for j, (scene, off, name, gain) in enumerate(e for e in EVENTS if e[0] in ORDER):
         inputs += ["-i", str(sfx_files[name])]
         ms = int((starts[scene] + off) * 1000)
         filt.append(f"[{idx}:a]aresample=44100,volume={svol * gain:.3f},adelay={ms}|{ms}[s{j}]"); mix.append(f"[s{j}]"); idx += 1
     filt.append(f"[vo]{''.join(mix)}amix=inputs={1 + len(mix)}:normalize=0:duration=first,loudnorm=I=-16:TP=-1.5:LRA=11[aout]")
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", *inputs, "-filter_complex", ";".join(filt), "-map", "0:v", "-map", "[aout]",
                     "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", str(out)], check=True)
-    print(f"wrote {out} ({dur(out):.1f}s)  music={'yes' if music else 'no'}  sfx events={len(EVENTS)}")
+    print(f"wrote {out} ({dur(out):.1f}s)  music={'yes' if music else 'no'}  sfx events={sum(1 for e in EVENTS if e[0] in ORDER)}")
 
 
 main()

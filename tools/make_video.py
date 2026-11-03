@@ -16,6 +16,8 @@ from pathlib import Path
 import websockets
 
 W, H = 1600, 1000
+if "--size" in sys.argv:                                  # e.g. --size 1080x1920 for a vertical reel
+    W, H = (int(v) for v in sys.argv[sys.argv.index("--size") + 1].split("x"))
 CH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 PORT = 9334
 
@@ -112,6 +114,7 @@ def scenes(base):
         dict(name="title", url=CARD("FathomPulse v1.0", "A live dashboard on Fathom's Kafka pipeline that measures how late it is, and tests itself."), dur=4.5, caps=[]),
         dict(name="whole", url=live, dur=9, caps=[(0.5, "Live: Binance and Coinbase BTC, streamed through Fathom's Kafka pipeline into this page.")]),
         dict(name="journey", url=DIAG("journey"), dur=24, caps=[]),
+        dict(name="reel", url=DIAG("reel"), dur=42, caps=[]),
         dict(name="age", url=live, dur=10, hl=("#strip", None), caps=[(0.5, "Every number carries its age. Feed health per venue: Binance about 10 updates a second, Coinbase about 16."),
                                                                   (6, "If a feed dies, this reads 'last update N s ago', never a blank chart.")]),
         dict(name="anatomy", url=live, dur=15, hl=(None, "Anatomy of a Tick"),

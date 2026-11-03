@@ -25,6 +25,14 @@ SEGMENTS = {
     "anatomy": [(0.5, "One update's life, split into measured stages. Real timestamps, not estimates."),
                 (7.0, "Click a bar to pause on that second, and see each record's Kafka offset.")],
     "slo": [(0.5, "Latency is judged against a hundred millisecond target at the ninety-ninth percentile. The frame wait is shown separately, as a display choice.")],
+    "reel": [(0.3, "My dashboard lied to me. Twice."),
+             (3.2, "It is called FathomPulse. It watches a live Kafka pipeline, and says why it is slow."),
+             (9.6, "So I froze the processor for eight seconds. For real."),
+             (14.2, "Lie number one. It blamed the exchange, while the queue was climbing."),
+             (19.6, "I fixed that. And my fix raised ten false alarms in seventeen minutes, on a healthy system."),
+             (27.1, "Lie number two. My own fix."),
+             (30.3, "Now an alarm needs a felt effect, not just a number. Both bugs have tests that fail without the fix."),
+             (38.4, "Measured, not assumed.")],
     "journey": [(0.8, "Here is one update's journey. Fathom's producer stamps it, and Kafka carries it to the processor."),
                 (7.6, "Stage one is Fathom's own work: rebuilding the book and deriving the features."),
                 (12.6, "Pulse consumes the derived record, and stamps it again."),
@@ -107,6 +115,7 @@ def say_to_wav(text, out, voice, rate):
 def main():
     a = sys.argv[1:]
     video, scenes, out = Path(a[0]), Path(a[1]), Path(a[2])
+    if "--order" in a: ORDER[:] = a[a.index("--order") + 1].split(",")      # e.g. --order reel for the vertical reel
     engine = a[a.index("--engine") + 1] if "--engine" in a else "say"
     voice = a[a.index("--voice-name") + 1] if "--voice-name" in a else {"kokoro": "af_heart", "elevenlabs": "JBFqnCBsd6RMkjVDRZzb"}.get(engine, "Daniel")   # elevenlabs: voice id (default George)
     model_dir = a[a.index("--model-dir") + 1] if "--model-dir" in a else "."

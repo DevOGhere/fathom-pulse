@@ -1,0 +1,76 @@
+<!doctype html><meta charset="utf-8"><title>Reel: the dashboard that lied twice (1080x1920)</title>
+<style>
+:root{--bg:#0b0e10;--ink:#f4f4f2;--mut:#9aa3a8;--red:#ef6b73;--grn:#5fd38d;--blu:#6aa7ff;--amb:#e0a23a;--line:#2c353a}
+*{box-sizing:border-box}html,body{margin:0;width:1080px;height:1920px;background:var(--bg);color:var(--ink);font-family:-apple-system,Helvetica,Arial,sans-serif;overflow:hidden}
+.p{position:absolute;inset:0;padding:90px;display:flex;flex-direction:column;justify-content:center;opacity:0;animation:pin .4s ease var(--in) forwards,pout .4s ease var(--out) forwards}
+.a{opacity:0;animation:pin .4s ease var(--d) forwards}
+@keyframes pin{to{opacity:1}}@keyframes pout{from{opacity:1}to{opacity:0}}
+.big{font-weight:800;letter-spacing:-2px;line-height:1.02}
+.mut{color:var(--mut)}
+/* P0 hook */
+#p0 .t1{font-size:156px}
+#p0 .t2{font-size:300px;color:var(--red);margin-top:20px;opacity:0;animation:pin .15s ease 1.5s forwards,shake .5s linear 1.5s}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-14px)}40%{transform:translateX(12px)}60%{transform:translateX(-8px)}80%{transform:translateX(6px)}}
+/* stack diagram */
+.title{font-size:118px;font-weight:800}.sub{font-size:54px;color:var(--mut);margin-top:18px;line-height:1.25}
+.node{position:relative;width:100%;height:190px;border:3px solid #4a545a;border-radius:24px;background:#12171a;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.node b{font-size:66px;letter-spacing:1px}.node span{font-size:38px;color:var(--mut);margin-top:8px}
+.arrow{position:relative;width:20px;height:100px;margin:0 auto;background:repeating-linear-gradient(var(--grn) 0 14px,transparent 14px 28px);animation:flow 1s linear infinite}
+@keyframes flow{to{background-position:0 28px}}
+.n1{margin-top:90px}
+.frozen{border-color:var(--blu)!important;background:#0f1b2b!important}.frozen b{color:var(--blu)}
+.gaugewrap{width:100%;margin-top:80px}
+.gl{font-size:42px;color:var(--mut);margin-bottom:12px;display:flex;justify-content:space-between}
+.gauge{height:96px;border-radius:14px;background:#0c1012;border:2px solid var(--line);overflow:hidden}
+.gauge i{display:block;height:100%;width:3%;background:var(--blu);animation:climb 4.2s linear 9.8s forwards}
+@keyframes climb{to{width:92%}}
+.cap{position:absolute;left:90px;right:90px;top:1620px;font-size:52px;font-weight:700;line-height:1.2;text-align:center}
+/* cards */
+.tag{display:inline-block;font-size:58px;font-weight:800;padding:12px 34px;border-radius:16px;background:var(--red);color:#0b0e10;align-self:flex-start}
+.card{margin-top:56px;border:3px solid var(--line);border-radius:28px;background:#12171a;padding:54px 54px;font-size:64px;line-height:1.28}
+.strike{position:relative;color:var(--mut)}.strike:after{content:"";position:absolute;left:0;top:54%;height:6px;width:0;background:var(--red);animation:wipe .6s ease 16.2s forwards}
+@keyframes wipe{to{width:100%}}
+.ok{color:var(--grn);font-weight:700}
+.dots{display:flex;gap:26px;margin-top:70px;flex-wrap:wrap}
+.dots i{width:84px;height:84px;border-radius:50%;background:var(--red);opacity:0;animation:pin .2s ease calc(var(--k) * 0.55s + 20.6s) forwards}
+.count{font-size:380px;font-weight:800;color:var(--red);line-height:1;margin-top:30px}
+.line{height:10px;border-radius:5px;background:var(--grn);margin-top:50px}
+.row{display:flex;align-items:center;gap:34px;font-size:70px;margin-top:56px}.chk{width:92px;height:92px;border-radius:20px;border:5px solid var(--grn);display:flex;align-items:center;justify-content:center;color:var(--grn);font-size:62px}
+.end1{font-size:132px}.end2{font-size:78px;color:var(--mut);margin-top:30px}.end3{font-size:58px;margin-top:100px;color:var(--grn)}
+</style>
+
+<div class="p" id="p0" style="--in:0.1s;--out:3.0s"><div class="big t1">My dashboard<br>lied to me.</div><div class="big t2">Twice.</div></div>
+
+<div class="p" id="p1" style="--in:3.0s;--out:9.4s">
+ <div class="title">FathomPulse</div><div class="sub">watches a live Kafka pipeline,<br>and says why it is slow</div>
+ <div class="node n1"><b>LIVE FEED</b><span>Binance · Coinbase</span></div><div class="arrow ar1"></div>
+ <div class="node n2"><b>PROCESSOR</b><span>order book · features</span></div><div class="arrow ar2"></div>
+ <div class="node n3"><b>PULSE</b><span>measures every stage</span></div></div>
+
+<div class="p" id="p2" style="--in:9.4s;--out:14.0s">
+ <div class="title">The test</div><div class="sub">freeze the processor for 8 seconds.<br>For real.</div>
+ <div class="node n1"><b>LIVE FEED</b><span>still sending</span></div><div class="arrow ar1"></div>
+ <div class="node n2 frozen"><b>PROCESSOR · FROZEN</b><span>SIGSTOP, 8 s</span></div><div class="arrow ar2" style="opacity:.25"></div>
+ <div class="node n3"><b>PULSE</b><span>no records arriving</span></div>
+ <div class="gaugewrap"><div class="gl"><span>processor queue</span><span>0 → 360 msgs</span></div><div class="gauge"><i></i></div></div></div>
+
+<div class="p" id="p3" style="--in:14.0s;--out:19.4s">
+ <div class="tag">LIE #1</div>
+ <div class="card"><div class="strike">"Nothing is piling up. The gap looks upstream: the exchange."</div></div>
+ <div class="card a" style="--d:16.6s"><span class="ok">The queue was climbing.</span><br>It was the processor, not the exchange.</div></div>
+
+<div class="p" id="p4" style="--in:19.4s;--out:27.0s">
+ <div class="tag" style="background:var(--amb)">THE FIX</div>
+ <div class="count">10</div><div class="big" style="font-size:84px;margin-top:10px">false alarms<br>in 17 minutes</div><div class="sub">on a perfectly healthy system</div>
+ <div class="dots"><i style="--k:0"></i><i style="--k:1"></i><i style="--k:2"></i><i style="--k:3"></i><i style="--k:4"></i><i style="--k:5"></i><i style="--k:6"></i><i style="--k:7"></i><i style="--k:8"></i><i style="--k:9"></i></div>
+ <div class="line"></div></div>
+
+<div class="p" id="p5" style="--in:27.0s;--out:30.0s"><div class="tag">LIE #2</div><div class="big" style="font-size:200px;margin-top:50px">my own fix.</div></div>
+
+<div class="p" id="p6" style="--in:30.0s;--out:38.2s">
+ <div class="title" style="font-size:104px">An alarm needs<br>a felt effect</div><div class="sub">not just a number</div>
+ <div class="row a" style="--d:32.0s"><div class="chk">✓</div>a stall is open</div>
+ <div class="row a" style="--d:33.4s"><div class="chk">✓</div>or latency has risen</div>
+ <div class="card a" style="--d:35.6s;margin-top:100px;font-size:60px">Both bugs now have tests<br>that <b>fail without the fix</b>.</div></div>
+
+<div class="p" id="p7" style="--in:38.2s;--out:99s"><div class="big end1">FathomPulse</div><div class="end2">measured, not assumed.</div><div class="end3">ojaswishere.in</div></div>
