@@ -114,7 +114,7 @@ def scenes(base):
         dict(name="title", url=CARD("FathomPulse v1.0", "A live dashboard on Fathom's Kafka pipeline that measures how late it is, and tests itself."), dur=4.5, caps=[]),
         dict(name="whole", url=live, dur=9, caps=[(0.5, "Live: Binance and Coinbase BTC, streamed through Fathom's Kafka pipeline into this page.")]),
         dict(name="journey", url=DIAG("journey"), dur=24, caps=[]),
-        dict(name="reel", url=DIAG("reel"), dur=42, caps=[]),
+        dict(name="reel", url=os.environ.get("REEL_URL") or DIAG("reel"), dur=float(os.environ.get("REEL_DUR", 42)), caps=[]),   # make_reel.py points REEL_URL at its built page
         dict(name="age", url=live, dur=10, hl=("#strip", None), caps=[(0.5, "Every number carries its age. Feed health per venue: Binance about 10 updates a second, Coinbase about 16."),
                                                                   (6, "If a feed dies, this reads 'last update N s ago', never a blank chart.")]),
         dict(name="anatomy", url=live, dur=15, hl=(None, "Anatomy of a Tick"),

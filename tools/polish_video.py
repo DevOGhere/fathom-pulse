@@ -23,6 +23,9 @@ EVENTS = [   # (scene, seconds into the scene, sfx, gain)
     ("calib", 4.0, "click", 1.0), ("calib", 14.0, "chime", 0.9),
     ("induce", 2.0, "click", 1.0), ("induce", 4.6, "alert", 0.8), ("induce", 10.4, "chime", 0.7),
 ]
+VM_DESC = ("A short vertical explainer reel about a data dashboard that caught itself lying twice: a calm technical intro, quiet tension while a process "
+           "is frozen, a soft sting at each wrong claim, relief at the end. Subtle, never dramatic, no vocals.")
+VM_TAGS = ["minimal", "tech", "subtle", "suspense"]
 MUSIC_PROMPT = ("Calm minimal ambient electronic underscore for a technical product demo: soft warm pads, a very gentle low pulse, "
                 "sparse light plucks, steady and unobtrusive, slow tempo, no vocals, no drums, no dramatic build")
 
@@ -38,6 +41,12 @@ def main():
     mvol = float(a[a.index("--music-volume") + 1]) if "--music-volume" in a else 0.16
     svol = float(a[a.index("--sfx-volume") + 1]) if "--sfx-volume" in a else 0.35
     use_music = "--no-music" not in a
+    events = EVENTS
+    if "--events-json" in a:                                   # [[scene, seconds, sfx, gain], ...], e.g. times taken from the spoken words
+        import json
+        events = [tuple(e) for e in json.loads(Path(a[a.index("--events-json") + 1]).read_text())]
+    vm = a[a.index("--video-music") + 1] if "--video-music" in a else None        # experiment: ElevenLabs music.video_to_music from the silent picture
+    use_vsfx = "--use-video-sfx" in a
     assets = out.parent / (out.stem + "_assets"); assets.mkdir(parents=True, exist_ok=True)
 
     from dotenv import load_dotenv
@@ -57,8 +66,25 @@ def main():
         starts[n] = t; t += dur(scenes / f"{n}.mp4")
     assert abs(t - total) < 0.5, f"scene lengths ({t:.1f}s) do not add up to the video ({total:.1f}s): re-assemble first"
 
+    vm_music = vm_sfx = None
+    if vm:
+        import zipfile
+        pic = Path(vm)
+        z = assets / f"vm_{hashlib.sha1(pic.read_bytes()).hexdigest()[:12]}.zip"
+        if not z.exists():
+            with open(pic, "rb") as fh:
+                z.write_bytes(b"".join(c.music.video_to_music(videos=[fh], description=VM_DESC, tags=VM_TAGS, add_sfx=True, separate_tracks=True, model_id="music_v2_5")))
+        if zipfile.is_zipfile(z):
+            with zipfile.ZipFile(z) as zf:
+                names = zf.namelist(); zf.extractall(assets / "vm")
+            print("video_to_music returned:", names)
+            pick = lambda *keys: next((assets / "vm" / n for n in names if any(k in n.lower() for k in keys)), None)
+            vm_sfx = pick("sfx", "effect", "fx"); vm_music = pick("music", "song", "track") or (assets / "vm" / names[0])
+            if vm_music == vm_sfx: vm_music = next((assets / "vm" / n for n in names if (assets / "vm" / n) != vm_sfx), vm_music)
+        else:
+            vm_music = z
     sfx_files = {k: cached("sfx", f"{k}|{p}|{s}", "mp3", lambda p=p, s=s: c.text_to_sound_effects.convert(text=p, duration_seconds=s, prompt_influence=0.6)) for k, (p, s) in SFX.items()}
-    music = cached("music", MUSIC_PROMPT + f"|{int(total)}", "mp3", lambda: c.music.compose(prompt=MUSIC_PROMPT, music_length_ms=int((total + 2) * 1000), model_id="music_v2_5", force_instrumental=True)) if use_music else None
+    music = vm_music or cached("music", MUSIC_PROMPT + f"|{int(total)}", "mp3", lambda: c.music.compose(prompt=MUSIC_PROMPT, music_length_ms=int((total + 2) * 1000), model_id="music_v2_5", force_instrumental=True)) if use_music else None
 
     inputs, filt, mix = ["-i", str(video)], [], []
     filt.append("[0:a]asplit=2[vo][vsc]")
@@ -70,14 +96,17 @@ def main():
         mix.append("[md]"); idx += 1
     else:
         filt[0] = "[0:a]anull[vo]"
-    for j, (scene, off, name, gain) in enumerate(e for e in EVENTS if e[0] in ORDER):
+    if vm and use_vsfx and vm_sfx:                           # variant B: the sound effects ElevenLabs placed from the picture, not my table
+        inputs += ["-i", str(vm_sfx)]; filt.append(f"[{idx}:a]aresample=44100,volume={svol * 2:.3f}[vsfx]"); mix.append("[vsfx]"); idx += 1
+        events = []
+    for j, (scene, off, name, gain) in enumerate(e for e in events if e[0] in ORDER):
         inputs += ["-i", str(sfx_files[name])]
         ms = int((starts[scene] + off) * 1000)
         filt.append(f"[{idx}:a]aresample=44100,volume={svol * gain:.3f},adelay={ms}|{ms}[s{j}]"); mix.append(f"[s{j}]"); idx += 1
     filt.append(f"[vo]{''.join(mix)}amix=inputs={1 + len(mix)}:normalize=0:duration=first,loudnorm=I=-16:TP=-1.5:LRA=11[aout]")
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", *inputs, "-filter_complex", ";".join(filt), "-map", "0:v", "-map", "[aout]",
                     "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", str(out)], check=True)
-    print(f"wrote {out} ({dur(out):.1f}s)  music={'yes' if music else 'no'}  sfx events={sum(1 for e in EVENTS if e[0] in ORDER)}")
+    print(f"wrote {out} ({dur(out):.1f}s)  music={'yes' if music else 'no'}  sfx events={sum(1 for e in events if e[0] in ORDER)}")
 
 
 main()
