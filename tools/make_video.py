@@ -25,7 +25,7 @@ OVERLAY = r"""
   const st = document.createElement('style');
   st.textContent = `#annCap{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);max-width:1180px;z-index:99999;
     background:rgba(8,10,12,.92);color:#f4f4f2;font:600 24px/1.35 -apple-system,Helvetica,Arial,sans-serif;padding:16px 26px;
-    border-radius:14px;border:1px solid rgba(255,255,255,.18);box-shadow:0 8px 30px rgba(0,0,0,.5);text-align:center;transition:opacity .25s}
+    border-radius:14px;border:1px solid rgba(255,255,255,.18);box-shadow:0 8px 30px rgba(0,0,0,.5);text-align:center;transition:opacity .25s;pointer-events:none}   /* clicks pass through: a caption once covered the button the scene was clicking */
     #annHl{position:fixed;z-index:99998;border:3px solid #ffd54a;border-radius:14px;box-shadow:0 0 0 9999px rgba(0,0,0,.38);
     pointer-events:none;transition:all .35s}`;
   document.head.append(st);
@@ -120,10 +120,11 @@ def scenes(base):
         dict(name="slo", url=live, dur=10, hl=(None, "Latency distribution"),
              caps=[(0.5, "p99 pipeline latency against a 100 ms target."), (5, "The wait for the next 10 Hz frame is reported separately: a display choice, not processing.")]),
         dict(name="selftest", url=DIAG("selftest"), dur=23, caps=[]),
-        dict(name="calib", url=live, dur=38, hl=(None, "Calibration"),
-             caps=[(0.5, "Calibration: Pulse hides an 80 ms delay inside one of its own stages and checks whether the waterfall finds the right stage and size."),
-                   (14, "A quiet 'sham' window runs first, to check it does not cry wolf."), (30, "The verdict expires; stale, it says so instead of staying green.")],
-             clicks=[(2, "#btnTest", 0.5, 0.5)], ),
+        dict(name="calib", url=live, dur=26, hl=(None, "Calibration"),
+             caps=[(0.4, "Calibration: Pulse hides an 80 ms delay inside one of its own stages and checks whether the waterfall finds the right stage and size."),
+                   (5.0, "A quiet 'sham' window runs first, to check it does not cry wolf."), (9.4, "Now the real delay goes in."),
+                   (15.4, "The verdict expires; stale, it says so instead of staying green.")],
+             clicks=[(4, "#btnTest", 0.5, 0.5)]),
         dict(name="detector", url=DIAG("detector"), dur=25.5, caps=[]),
         dict(name="induce", url=live, dur=24, hl=(None, "Incidents"),
              caps=[(0.5, "Now I break the feed on purpose: Pulse discards every record for 8 seconds."), (6, "The detector opens an incident and states only what Pulse can see."), (15, "It clears when the feed returns. Induced events are always labelled.")],
@@ -156,6 +157,8 @@ class CDP:
             except asyncio.TimeoutError: pass
     async def ev(self, js): return (await self.call("Runtime.evaluate", expression=js, returnByValue=True)).get("result", {}).get("result", {}).get("value")
     async def click(self, sel, fx, fy):
+        await self.ev(f"(()=>{{const e=document.querySelector({json.dumps(sel)}); if(e){{const b=e.getBoundingClientRect(); if(b.bottom>innerHeight-70||b.top<0) e.scrollIntoView({{block:'center', behavior:'instant'}})}}}})()")      # only when the target is off-screen or under the sticky status bar; instant, because a smooth scroll leaves stale coordinates
+        await self.pump(0.25)
         r = await self.ev(f"(()=>{{const e=document.querySelector({json.dumps(sel)}); if(!e) return null; const b=e.getBoundingClientRect(); return [b.left+b.width*{fx}, b.top+b.height*{fy}]}})()")
         if not r: print("  (click target missing:", sel, ")"); return
         for t in ("mouseMoved", "mousePressed", "mouseReleased"):
@@ -178,7 +181,9 @@ async def record(c, sc, outdir):
         while todo and todo[0][0] <= el:
             _, kind, x = todo.pop(0)
             if kind == "cap": await c.ev(f"window.__ann.cap({json.dumps(x)})")
-            elif kind == "click": await c.click(*x)
+            elif kind == "click":
+                await c.click(*x)
+                if sc.get("hl"): await c.ev(f"window.__ann.hl({json.dumps(sc['hl'][0])},{json.dumps(sc['hl'][1])})")      # the click may have scrolled the page: re-place the highlight
             elif kind == "js": await c.ev(x)
             elif kind == "key": await c.key(x)
         if until and el > 4 and done_at is None and await c.ev(until): done_at = el
