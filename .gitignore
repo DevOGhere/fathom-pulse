@@ -4,3 +4,7 @@ __pycache__/
 captures/
 .DS_Store
 pulse/web/captures/*.ndjson
+
+# local secrets (ElevenLabs key etc.): never commit
+.env
+.env.*

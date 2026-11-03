@@ -1,0 +1,33 @@
+<!doctype html><meta charset="utf-8"><title>How the self-test works</title>
+<style>
+:root{--bg:#0e1113;--ink:#f4f4f2;--mut:#9aa3a8;--s1:#3fb68b;--s2:#e0a23a;--s3:#9b8cf0;--ok:#5fd38d;--bad:#ef6b73}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:-apple-system,Helvetica,Arial,sans-serif;overflow:hidden}
+h1{position:absolute;left:60px;top:44px;margin:0;font-size:57px;font-weight:700;letter-spacing:-.5px}
+.sub{position:absolute;left:60px;top:106px;font-size:29px;color:var(--mut)}
+.panel{position:absolute;left:60px;right:60px;border:2px solid #2c353a;border-radius:16px;padding:26px 34px;background:#12171a;opacity:0;animation:in .6s forwards}
+.panel h2{margin:0 0 18px;font-size:34px}.panel h2 span{color:var(--mut);font-weight:500;font-size:26px;margin-left:12px}
+.bar{display:flex;height:84px;gap:4px;align-items:stretch}
+.seg{border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;color:#0e1113;overflow:hidden;white-space:nowrap}
+.s1{background:var(--s1);width:290px}.s2{background:var(--s2)}.s3{background:var(--s3);width:150px}
+.verdict{margin-top:16px;font-size:31px;opacity:0;animation:in .6s forwards}
+.ok{color:var(--ok);font-weight:700}
+@keyframes in{to{opacity:1}}
+/* panel A: sham (nothing injected). stage 2 stays 170px. */
+#a{top:170px;animation-delay:.4s}#a .s2{width:210px}#a .verdict{animation-delay:4s}
+/* panel B: inject 80 ms: stage 2 grows */
+#b{top:470px;animation-delay:6s}#b .s2{width:210px;animation:grow 2.4s 8.2s forwards}
+@keyframes grow{to{width:560px}}
+#b .inj{opacity:0;animation:in .5s 7.6s forwards;color:var(--s2);font-size:29px;margin-bottom:10px}
+#b .verdict{animation-delay:11.2s}
+.foot{position:absolute;left:60px;bottom:38px;right:60px;font-size:30px;color:var(--mut);opacity:0;animation:in .8s 15s forwards}
+.foot b{color:var(--ink)}
+</style>
+<h1>How can a dashboard check itself?</h1><div class="sub">hide a known delay inside its own stages, then look for it</div>
+<div class="panel" id="a"><h2>1 · Sham run <span>nothing is hidden</span></h2>
+ <div class="bar"><div class="seg s1">stage 1</div><div class="seg s2">stage 2</div><div class="seg s3">stage 3</div></div>
+ <div class="verdict">Pulse must find <b>nothing</b>. <span class="ok">✓ it does not cry wolf</span></div></div>
+<div class="panel" id="b"><h2>2 · Hide 80 ms in stage 2 <span>at the real stamp site, truth measured</span></h2>
+ <div class="inj">+ 80 ms injected here ↓</div>
+ <div class="bar"><div class="seg s1">stage 1</div><div class="seg s2">stage 2 &nbsp;+80 ms?</div><div class="seg s3">stage 3</div></div>
+ <div class="verdict">The waterfall must show about <b>+80 ms in stage 2</b>, and nowhere else. <span class="ok">✓ right stage, right size</span></div></div>
+<div class="foot"><b>Scope:</b> Pulse's own stages (consumer and aggregator). Not Fathom's stamps, not exchange clocks, not the network.</div>

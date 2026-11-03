@@ -56,6 +56,8 @@ CARD = lambda title, sub: ("data:text/html;charset=utf-8," + urllib.parse.quote(
 
 import urllib.parse   # noqa: E402  (CARD uses it at call time)
 
+DIAG = lambda n: (Path(__file__).resolve().parent / "diagrams" / f"{n}.html").as_uri()      # animated explainer pages, recorded like any scene
+
 # What is SAID per scene (docs/DEMO.md rule: nothing the page does not show). Captions stay on screen; this is the voice.
 NARRATION = {
     "title": "FathomPulse. A live dashboard on Fathom's Kafka pipeline that measures how late it is, and tests itself.",
@@ -109,6 +111,7 @@ def scenes(base):
     return [
         dict(name="title", url=CARD("FathomPulse v1.0", "A live dashboard on Fathom's Kafka pipeline that measures how late it is, and tests itself."), dur=4.5, caps=[]),
         dict(name="whole", url=live, dur=9, caps=[(0.5, "Live: Binance and Coinbase BTC, streamed through Fathom's Kafka pipeline into this page.")]),
+        dict(name="journey", url=DIAG("journey"), dur=24, caps=[]),
         dict(name="age", url=live, dur=10, hl=("#strip", None), caps=[(0.5, "Every number carries its age. Feed health per venue: Binance about 10 updates a second, Coinbase about 16."),
                                                                   (6, "If a feed dies, this reads 'last update N s ago', never a blank chart.")]),
         dict(name="anatomy", url=live, dur=15, hl=(None, "Anatomy of a Tick"),
@@ -116,10 +119,12 @@ def scenes(base):
              clicks=[(5, "#cAnat", 0.62, 0.55)], keys=[(14, "Escape")]),
         dict(name="slo", url=live, dur=10, hl=(None, "Latency distribution"),
              caps=[(0.5, "p99 pipeline latency against a 100 ms target."), (5, "The wait for the next 10 Hz frame is reported separately: a display choice, not processing.")]),
+        dict(name="selftest", url=DIAG("selftest"), dur=23, caps=[]),
         dict(name="calib", url=live, dur=38, hl=(None, "Calibration"),
              caps=[(0.5, "Calibration: Pulse hides an 80 ms delay inside one of its own stages and checks whether the waterfall finds the right stage and size."),
                    (14, "A quiet 'sham' window runs first, to check it does not cry wolf."), (30, "The verdict expires; stale, it says so instead of staying green.")],
              clicks=[(2, "#btnTest", 0.5, 0.5)], ),
+        dict(name="detector", url=DIAG("detector"), dur=25.5, caps=[]),
         dict(name="induce", url=live, dur=24, hl=(None, "Incidents"),
              caps=[(0.5, "Now I break the feed on purpose: Pulse discards every record for 8 seconds."), (6, "The detector opens an incident and states only what Pulse can see."), (15, "It clears when the feed returns. Induced events are always labelled.")],
              clicks=[(2, "#btnInduce", 0.5, 0.5)]),
@@ -194,14 +199,15 @@ async def record(c, sc, outdir):
     mp4 = Path(outdir) / f"{sc['name']}.mp4"
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(d / "list.txt"), "-vf",
                     f"fps=30,scale={W}:{H}:force_original_aspect_ratio=decrease,pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=black,"
-                    "fade=t=in:st=0:d=0.3,format=yuv420p", "-c:v", "libx264", "-crf", "20", str(mp4)], check=True)
+                    "fade=t=in:st=0:d=0.3,format=yuv420p", "-c:v", "libx264", "-crf", "20",
+                    "-t", f"{end - fr[0][0]:.3f}", str(mp4)], check=True)     # -t: the concat demuxer's repeated last entry would otherwise count the final frame's duration twice
     print(f"  {sc['name']}: {len(fr)} frames, {end - t0:.1f}s -> {mp4.name}")
     return mp4
 
 
 async def main():
     a = sys.argv[1:]; scratch, out = Path(a[0]), Path(a[1])
-    only = {int(x) for x in a[a.index("--only") + 1].split(",")} if "--only" in a else None
+    only = set(a[a.index("--only") + 1].split(",")) if "--only" in a else None       # scene indices or names (--only journey,selftest)
     base = a[a.index("--base") + 1] if "--base" in a else "http://127.0.0.1:8765"
     voice = a[a.index("--voice") + 1] if "--voice" in a else "none"
     voice_name = a[a.index("--voice-name") + 1] if "--voice-name" in a else "Daniel"
@@ -219,7 +225,7 @@ async def main():
             await c.call("Emulation.setDeviceMetricsOverride", width=W, height=H, deviceScaleFactor=1, mobile=False)
             parts = []
             for i, sc in enumerate(scenes(base)):
-                if only and i not in only: continue
+                if only and str(i) not in only and sc["name"] not in only: continue
                 print(f"[{i}] {sc['name']}")
                 aud, adur = audio_for(sc["name"], voice, scratch / "vid", voice_name, rate)
                 if aud: sc["dur"] = max(sc["dur"], adur + 1.2)         # narration decides the length, never the other way round

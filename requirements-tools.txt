@@ -1,0 +1,3 @@
+# only for tools/ (demo voiceover); the Pulse server does not need these
+elevenlabs
+python-dotenv

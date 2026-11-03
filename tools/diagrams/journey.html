@@ -1,0 +1,36 @@
+<!doctype html><meta charset="utf-8"><title>One update's journey</title>
+<style>
+:root{--bg:#0e1113;--ink:#f4f4f2;--mut:#9aa3a8;--line:#3a4247;--s1:#3fb68b;--s2:#e0a23a;--s3:#9b8cf0;--s4:#ef6b73}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:-apple-system,Helvetica,Arial,sans-serif;overflow:hidden}
+h1{position:absolute;left:60px;top:44px;margin:0;font-size:57px;font-weight:700;letter-spacing:-.5px}
+.sub{position:absolute;left:60px;top:106px;font-size:29px;color:var(--mut)}
+svg{position:absolute;left:0;top:130px;width:1600px;height:800px}
+.node rect{fill:#151a1d;stroke:#4a545a;stroke-width:2;rx:14}
+.node text.t{fill:var(--ink);font-size:29px;font-weight:700;text-anchor:middle}
+.node text.s{fill:var(--mut);font-size:21px;text-anchor:middle}
+.pipe{stroke:var(--line);stroke-width:3;fill:none}
+.br{opacity:0;animation:in .6s forwards}
+.br text.l{font-size:27px;font-weight:700}.br text.d{font-size:21px;fill:var(--mut)}
+@keyframes in{to{opacity:1}}
+.dot{fill:#fff;filter:drop-shadow(0 0 8px #fff)}
+.note{position:absolute;left:60px;bottom:40px;font-size:29px;color:var(--mut);opacity:0;animation:in .8s 19s forwards}
+</style>
+<h1>One update's journey</h1><div class="sub">every stage stamped on the same machine's monotonic clock</div>
+<svg viewBox="0 0 1600 800">
+ <!-- nodes: x centers 130,380,630,880,1130,1380 ; y 150..260 -->
+ <g class="node"><rect x="30" y="150" width="200" height="120"/><text class="t" x="130" y="200">EXCHANGES</text><text class="s" x="130" y="228">Binance · Coinbase</text></g>
+ <g class="node"><rect x="290" y="150" width="200" height="120"/><text class="t" x="390" y="200">PRODUCER</text><text class="s" x="390" y="228">stamps recv_ts</text></g>
+ <g class="node"><rect x="550" y="150" width="200" height="120"/><text class="t" x="650" y="200">KAFKA</text><text class="s" x="650" y="228">raw topics</text></g>
+ <g class="node"><rect x="810" y="150" width="200" height="120"/><text class="t" x="910" y="200">PROCESSOR</text><text class="s" x="910" y="228">order book · derive</text></g>
+ <g class="node"><rect x="1070" y="150" width="200" height="120"/><text class="t" x="1170" y="200">KAFKA</text><text class="s" x="1170" y="228">derived topic</text></g>
+ <g class="node"><rect x="1330" y="150" width="240" height="120"/><text class="t" x="1450" y="200">PULSE</text><text class="s" x="1450" y="228">consume · bin · frame</text></g>
+ <path class="pipe" id="path" d="M230,210 H290 M490,210 H550 M750,210 H810 M1010,210 H1070 M1270,210 H1330"/>
+ <path id="mp" d="M130,210 H1450 V700" fill="none"/>
+ <!-- stage brackets: appear when the dot gets there -->
+ <g class="br" style="animation-delay:7.5s"><path d="M390,300 V318 H910 V300" fill="none" stroke="var(--s1)" stroke-width="5"/><text class="l" x="650" y="356" fill="var(--s1)" text-anchor="middle">1 · producer → derived (Fathom)</text><text class="d" x="650" y="382" text-anchor="middle">measured</text></g>
+ <g class="br" style="animation-delay:12.3s"><path d="M910,420 V438 H1450 V420" fill="none" stroke="var(--s2)" stroke-width="5"/><text class="l" x="1180" y="476" fill="var(--s2)" text-anchor="middle">2 · derived → Pulse consumed</text><text class="d" x="1180" y="502" text-anchor="middle">measured, per message</text></g>
+ <g class="br" style="animation-delay:14.0s"><rect x="1090" y="548" width="480" height="6" fill="var(--s3)" rx="3"/><text class="l" x="1570" y="600" fill="var(--s3)" text-anchor="end">3 · consumed → ready for a frame</text><text class="d" x="1570" y="632" text-anchor="end">measured</text></g>
+ <g class="br" style="animation-delay:16.2s"><rect x="1090" y="672" width="480" height="6" fill="var(--s4)" rx="3" stroke-dasharray="10 8"/><text class="l" x="1570" y="724" fill="var(--s4)" text-anchor="end">4 · sent → your screen</text><text class="d" x="1570" y="756" text-anchor="end">local estimate, labelled as one</text></g>
+ <circle class="dot" r="11"><animateMotion dur="16s" begin="0.6s" fill="freeze" calcMode="linear"><mpath href="#mp"/></animateMotion></circle>
+</svg>
+<div class="note">The wait for the next 10 Hz frame is reported separately: a display choice, not processing.</div>

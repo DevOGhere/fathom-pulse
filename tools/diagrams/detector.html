@@ -1,0 +1,34 @@
+<!doctype html><meta charset="utf-8"><title>Cause from evidence</title>
+<style>
+:root{--bg:#0e1113;--ink:#f4f4f2;--mut:#9aa3a8;--ok:#5fd38d;--warn:#e0a23a;--bad:#ef6b73;--blue:#6aa7ff}
+*{box-sizing:border-box}html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:-apple-system,Helvetica,Arial,sans-serif;overflow:hidden}
+h1{position:absolute;left:60px;top:44px;margin:0;font-size:57px;font-weight:700;letter-spacing:-.5px}
+.sub{position:absolute;left:60px;top:106px;font-size:29px;color:var(--mut)}
+.case{position:absolute;left:60px;right:60px;height:340px;border:2px solid #2c353a;border-radius:16px;background:#12171a;padding:24px 34px;opacity:0;animation:in .6s forwards}
+#c1{top:170px;animation-delay:.4s}#c2{top:540px;animation-delay:7.5s}
+.case h2{margin:0 0 14px;font-size:34px}.case h2 span{color:var(--mut);font-weight:500;font-size:26px;margin-left:10px}
+.row{display:flex;gap:40px;align-items:center}
+.box{width:470px}.lab{font-size:23px;color:var(--mut);margin-bottom:8px}
+.feed{height:58px;border-radius:8px;background:#0c1012;position:relative;overflow:hidden;border:1px solid #2c353a}
+.feed i{position:absolute;top:0;bottom:0;width:4px;background:var(--ok);animation:tick 1.2s linear infinite}
+.feed .quiet{position:absolute;top:0;bottom:0;right:0;width:0;background:#0c1012;animation:quiet .1s forwards}
+.gauge{height:58px;border-radius:8px;background:#0c1012;border:1px solid #2c353a;position:relative;overflow:hidden}
+.gauge b{position:absolute;left:0;top:0;bottom:0;width:6%;background:var(--blue)}
+#c1 .gauge b{animation:none}#c2 .gauge b{animation:climb 4s 9.5s forwards}
+.cause{flex:1;font-size:32px;line-height:1.35;opacity:0}
+#c1 .cause{animation:in .7s 3.4s forwards}#c2 .cause{animation:in .7s 12s forwards}
+.cause b{color:var(--warn)}
+@keyframes in{to{opacity:1}}@keyframes climb{to{width:88%}}@keyframes quiet{to{width:55%}}
+@keyframes tick{0%{right:-6px}100%{right:100%}}
+.foot{position:absolute;left:60px;bottom:30px;right:60px;font-size:30px;color:var(--mut);opacity:0;animation:in .8s 16s forwards}.foot b{color:var(--ink)}
+</style>
+<h1>When a feed goes quiet, what is the cause?</h1><div class="sub">the sentence only claims what the evidence supports</div>
+<div class="case" id="c1"><h2>Feed quiet, processor queue flat <span>nothing piling up</span></h2>
+ <div class="row"><div class="box"><div class="lab">records arriving at Pulse</div><div class="feed"><i style="right:20%"></i><i style="right:45%;animation-delay:.4s"></i><i style="right:70%;animation-delay:.8s"></i><div class="quiet" style="animation-delay:2.4s"></div></div>
+  <div class="lab" style="margin-top:14px">processor queue</div><div class="gauge"><b></b></div></div>
+  <div class="cause">“Records stopped and nothing is piling up in front of the processor. The gap looks <b>upstream</b>: exchange, network or producer. Pulse cannot tell which.”</div></div></div>
+<div class="case" id="c2"><h2>Feed quiet, processor queue climbing <span>it is the processor</span></h2>
+ <div class="row"><div class="box"><div class="lab">records arriving at Pulse</div><div class="feed"><div class="quiet" style="width:55%;animation:none"></div></div>
+  <div class="lab" style="margin-top:14px">processor queue</div><div class="gauge"><b></b></div></div>
+  <div class="cause">“The queue is growing: the delay is <b>at or inside the processor</b>, not at the exchange.”</div></div></div>
+<div class="foot"><b>Tested for real:</b> the processor was frozen for 8 seconds. The first version of this rule blamed the exchange. It no longer does.</div>
