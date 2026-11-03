@@ -25,14 +25,15 @@ SEGMENTS = {
     "anatomy": [(0.5, "One update's life, split into measured stages. Real timestamps, not estimates."),
                 (7.0, "Click a bar to pause on that second, and see each record's Kafka offset.")],
     "slo": [(0.5, "Latency is judged against a hundred millisecond target at the ninety-ninth percentile. The frame wait is shown separately, as a display choice.")],
-    "reel": [(0.3, "My dashboard lied to me. Twice."),
-             (3.2, "It is called FathomPulse. It watches a live Kafka pipeline, and says why it is slow."),
-             (9.6, "So I froze the processor for eight seconds. For real."),
-             (14.2, "Lie number one. It blamed the exchange, while the queue was climbing."),
-             (19.6, "I fixed that. And my fix raised ten false alarms in seventeen minutes, on a healthy system."),
-             (27.1, "Lie number two. My own fix."),
-             (30.3, "Now an alarm needs a felt effect, not just a number. Both bugs have tests that fail without the fix."),
-             (38.4, "Measured, not assumed.")],
+    "reel": [(0.25, "I built a lie detector for data pipelines."),
+             (3.2, "Live prices flow through Kafka. Pulse timestamps every hop, and explains any stall."),
+             (9.6, "So I broke it on purpose, and waited for its verdict."),
+             (14.2, "Confident. Specific. Wrong. The evidence was right there."),
+             (19.6, "The patch cried wolf, ten times in seventeen minutes."),
+             (23.6, "A fix is just a new hypothesis."),
+             (27.1, "Both lies were mine, not the data's."),
+             (30.3, "The rule now: never alarm on a number alone. Wait until something actually hurts. Both bugs live on as tests."),
+             (38.5, "Measured. Not assumed.")],
     "journey": [(0.8, "Here is one update's journey. Fathom's producer stamps it, and Kafka carries it to the processor."),
                 (7.6, "Stage one is Fathom's own work: rebuilding the book and deriving the features."),
                 (12.6, "Pulse consumes the derived record, and stamps it again."),
@@ -60,6 +61,18 @@ SEGMENTS = {
     "replay": [(0.5, "The same page and code path can replay a recording. Two cold browsers render it byte for byte identically.")],
     "end": [(1.0, "It is millisecond-class by design. Not a microsecond system, and it says so.")],
 }
+
+
+TEMPO = 1.0
+
+
+def speed_up(wav):
+    """In place: atempo keeps the pitch. Applied to every synthesized line, so the schedule sees the real (shorter) durations."""
+    if TEMPO == 1.0:
+        return
+    tmp = wav.with_suffix(".t.wav")
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(wav), "-af", f"atempo={TEMPO}", str(tmp)], check=True)
+    tmp.replace(wav)
 
 
 def dur(path):
@@ -116,6 +129,8 @@ def main():
     a = sys.argv[1:]
     video, scenes, out = Path(a[0]), Path(a[1]), Path(a[2])
     if "--order" in a: ORDER[:] = a[a.index("--order") + 1].split(",")      # e.g. --order reel for the vertical reel
+    global TEMPO
+    TEMPO = float(a[a.index("--tempo") + 1]) if "--tempo" in a else 1.0       # e.g. 1.1: ElevenLabs v4 has no speed setting, so the voice is sped up with ffmpeg atempo
     engine = a[a.index("--engine") + 1] if "--engine" in a else "say"
     voice = a[a.index("--voice-name") + 1] if "--voice-name" in a else {"kokoro": "af_heart", "elevenlabs": "JBFqnCBsd6RMkjVDRZzb"}.get(engine, "Daniel")   # elevenlabs: voice id (default George)
     model_dir = a[a.index("--model-dir") + 1] if "--model-dir" in a else "."
@@ -140,6 +155,7 @@ def main():
             ends, prev_end = [], -1.0
             for i, (off, text) in enumerate(SEGMENTS[name]):
                 w = work / f"{name}_{i}.wav"; (kokoro_to_wav(text, w, voice, model_dir) if engine == "kokoro" else eleven_to_wav(text, w, voice, flat[pos - 1] if pos else "", flat[pos + 1] if pos + 1 < len(flat) else "", out.parent / "eleven_cache") if engine == "elevenlabs" else say_to_wav(text, w, voice, rate)); pos += 1
+                speed_up(w)
                 ln = dur(w)
                 start = max(off, prev_end + 0.35)          # scheduler: a slower voice pushes a line later instead of talking over the previous one
                 if start > off + 0.05: print(f"  note {name}[{i}]: pushed from {off:.1f}s to {start:.1f}s (previous line still speaking)")
