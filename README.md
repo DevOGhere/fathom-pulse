@@ -4,9 +4,9 @@
 
 Two lenses on one timeline: **market microstructure** (mid, microprice, order-book imbalance, top of book, trades) and the **engine room** (where each update spent its time, processor lag, incidents). Built on Fathom's live Kafka stream (Binance + Coinbase, BTC).
 
-![Live view: Binance and Coinbase BTC with the Anatomy of a Tick waterfall](docs/img/live.jpg)
+[![Live view: Binance and Coinbase BTC with the Anatomy of a Tick waterfall. Click to play the walkthrough.](docs/img/live.jpg)](docs/demo.mp4)
 
-**[Watch the 3 minute walkthrough](https://ojaswishere.in/fathompulse/demo.mp4)**, recorded from the running app.
+**[Watch the 3 minute walkthrough](docs/demo.mp4)**, recorded from the running app.
 
 | Self-test hides a known delay | An induced stall, labelled as induced |
 |---|---|
