@@ -8,3 +8,4 @@ pulse/web/captures/*.ndjson
 # local secrets (ElevenLabs key etc.): never commit
 .env
 .env.*
+.dev-status.json
