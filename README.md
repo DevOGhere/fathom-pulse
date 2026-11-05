@@ -4,6 +4,14 @@
 
 Two lenses on one timeline: **market microstructure** (mid, microprice, order-book imbalance, top of book, trades) and the **engine room** (where each update spent its time, processor lag, incidents). Built on Fathom's live Kafka stream (Binance + Coinbase, BTC).
 
+![Live view: Binance and Coinbase BTC with the Anatomy of a Tick waterfall](docs/img/live.jpg)
+
+**[Watch the 3 minute walkthrough](https://ojaswishere.in/fathompulse/demo.mp4)**, recorded from the running app.
+
+| Self-test hides a known delay | An induced stall, labelled as induced |
+|---|---|
+| ![Self-test running](docs/img/selftest.jpg) | ![Induced stall on the timeline](docs/img/stall.jpg) |
+
 ## What is different: Honest Glass
 
 1. **Every number carries its age.** Data-age chips on every panel; the *Anatomy of a Tick* waterfall splits an update's life into measured stages (producer → derived → Pulse consumed → ready for a frame). Stamps are host-side monotonic; nothing is estimated unless it says so.
