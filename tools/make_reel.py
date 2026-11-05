@@ -62,6 +62,24 @@ def dur(p):
     return float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(p)], capture_output=True, text=True, check=True).stdout)
 
 
+def synth_line(c, voice, tempo, work, text, prev, nxt):
+    """One narration line -> {wav (tempo applied), ws: [(word, start, end)] in the sped-up timeline, n: seconds}. Cached by content."""
+    from elevenlabs import VoiceSettings
+    key = hashlib.sha1(f"ts|{voice}|{prev}|{text}|{nxt}".encode()).hexdigest()[:16]
+    f = work / f"line_{key}.json"
+    if not f.exists():
+        r = c.text_to_speech.convert_with_timestamps(voice, text=text, model_id="eleven_v4", output_format="mp3_44100_128",
+                                                     previous_text=prev or None, next_text=nxt or None,
+                                                     voice_settings=VoiceSettings(stability=0.5, similarity_boost=0.75))
+        d = r.model_dump() if hasattr(r, "model_dump") else dict(r)
+        f.write_text(json.dumps({"audio": d.get("audio_base_64") or d.get("audio_base64"), "alignment": d["alignment"]}))
+    j = json.loads(f.read_text())
+    mp3 = work / f"line_{key}.mp3"; mp3.write_bytes(base64.b64decode(j["audio"]))
+    wav = work / f"line_{key}.t.wav"
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(mp3), "-af", f"atempo={tempo}", "-ar", "44100", "-ac", "1", str(wav)], check=True)
+    return dict(wav=wav, ws=[(w, s / tempo, e / tempo) for w, s, e in words(j["alignment"])], n=dur(wav))
+
+
 def main():
     a = sys.argv[1:]
     work, prefix = Path(a[0]), Path(a[1])
@@ -145,4 +163,5 @@ def main():
         subprocess.run([*polish, str(narrated), str(work / "scenes"), str(prefix) + "_B_video_to_music.mp4", "--order", "reel", "--video-music", str(picture), "--use-video-sfx"], check=True)
 
 
-main()
+if __name__ == "__main__":
+    main()

@@ -113,8 +113,8 @@ def scenes(base):
     return [
         dict(name="title", url=CARD("FathomPulse v1.0", "A live dashboard on Fathom's Kafka pipeline that measures how late it is, and tests itself."), dur=4.5, caps=[]),
         dict(name="whole", url=live, dur=9, caps=[(0.5, "Live: Binance and Coinbase BTC, streamed through Fathom's Kafka pipeline into this page.")]),
-        dict(name="journey", url=DIAG("journey"), dur=24, caps=[]),
-        dict(name="reel", url=os.environ.get("REEL_URL") or DIAG("reel"), dur=float(os.environ.get("REEL_DUR", 42)), caps=[]),   # make_reel.py points REEL_URL at its built page
+        dict(name="journey", url=DIAG("journey"), dur=24, caps=[], restart=True),
+        dict(name="reel", url=os.environ.get("REEL_URL") or DIAG("reel"), dur=float(os.environ.get("REEL_DUR", 42)), caps=[], restart=True),   # make_reel.py points REEL_URL at its built page
         dict(name="age", url=live, dur=10, hl=("#strip", None), caps=[(0.5, "Every number carries its age. Feed health per venue: Binance about 10 updates a second, Coinbase about 16."),
                                                                   (6, "If a feed dies, this reads 'last update N s ago', never a blank chart.")]),
         dict(name="anatomy", url=live, dur=15, hl=(None, "Anatomy of a Tick"),
@@ -122,13 +122,13 @@ def scenes(base):
              clicks=[(5, "#cAnat", 0.62, 0.55)], keys=[(14, "Escape")]),
         dict(name="slo", url=live, dur=10, hl=(None, "Latency distribution"),
              caps=[(0.5, "p99 pipeline latency against a 100 ms target."), (5, "The wait for the next 10 Hz frame is reported separately: a display choice, not processing.")]),
-        dict(name="selftest", url=DIAG("selftest"), dur=23, caps=[]),
+        dict(name="selftest", url=DIAG("selftest"), dur=23, caps=[], restart=True),
         dict(name="calib", url=live, dur=26, hl=(None, "Calibration"),
              caps=[(0.4, "Calibration: Pulse hides an 80 ms delay inside one of its own stages and checks whether the waterfall finds the right stage and size."),
                    (5.0, "A quiet 'sham' window runs first, to check it does not cry wolf."), (9.4, "Now the real delay goes in."),
                    (15.4, "The verdict expires; stale, it says so instead of staying green.")],
              clicks=[(4, "#btnTest", 0.5, 0.5)]),
-        dict(name="detector", url=DIAG("detector"), dur=25.5, caps=[]),
+        dict(name="detector", url=DIAG("detector"), dur=25.5, caps=[], restart=True),
         dict(name="induce", url=live, dur=24, hl=(None, "Incidents"),
              caps=[(0.5, "Now I break the feed on purpose: Pulse discards every record for 8 seconds."), (6, "The detector opens an incident and states only what Pulse can see."), (15, "It clears when the feed returns. Induced events are always labelled.")],
              clicks=[(2, "#btnInduce", 0.5, 0.5)]),
@@ -177,6 +177,8 @@ async def record(c, sc, outdir):
     if sc.get("hl"): await c.ev(f"window.__ann.hl({json.dumps(sc['hl'][0])},{json.dumps(sc['hl'][1])})")
     await c.call("Page.startScreencast", format="jpeg", quality=82, everyNthFrame=1)
     t0 = time.monotonic()
+    if sc.get("restart"):             # the page loaded ~1.6 s before the screencast began: restart its animations so their delays count from the first recorded frame
+        await c.ev("document.getAnimations().forEach(a=>{a.cancel();a.play()});document.querySelectorAll('svg').forEach(s=>s.setCurrentTime&&s.setCurrentTime(0))")
     todo = sorted([(t, "cap", x) for t, x in sc.get("caps", [])] + [(t, "click", (s, fx, fy)) for t, s, fx, fy in sc.get("clicks", [])] +
                   [(t, "js", e) for t, e in sc.get("js", [])] + [(t, "key", k) for t, k in sc.get("keys", [])], key=lambda x: x[0])
     until, done_at = sc.get("until"), None
@@ -232,7 +234,11 @@ async def main():
             await c.call("Page.enable"); await c.call("Runtime.enable")
             await c.call("Emulation.setDeviceMetricsOverride", width=W, height=H, deviceScaleFactor=1, mobile=False)
             parts = []
+            timing = json.loads(Path(a[a.index("--timing") + 1]).read_text()) if "--timing" in a else {}     # per-scene overrides computed from the narration (make_demo.py)
             for i, sc in enumerate(scenes(base)):
+                if sc["name"] in timing:
+                    o = timing[sc["name"]]
+                    sc.update({k: ([tuple(x) for x in v] if isinstance(v, list) else v) for k, v in o.items()})
                 if only and str(i) not in only and sc["name"] not in only: continue
                 print(f"[{i}] {sc['name']}")
                 aud, adur = audio_for(sc["name"], voice, scratch / "vid", voice_name, rate)
